@@ -1,0 +1,31 @@
+<html>
+  <head>
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  </head>
+
+  <body>
+    <a-scene>
+
+      <!-- lumière -->
+      <a-light type="ambient" intensity="1"></a-light>
+
+      <!-- sol -->
+      <a-plane rotation="-90 0 0" width="30" height="30" color="#444"></a-plane>
+
+      <!-- musique -->
+      <a-sound src="music.mp3" autoplay="true" loop="true" position="0 2 0"></a-sound>
+
+      <!-- scène MMD -->
+      <a-gltf-model src="scene.glb"
+                    position="0 0 -3"
+                    scale="1 1 1"
+                    animation-mixer></a-gltf-model>
+
+      <!-- joueur VR -->
+      <a-entity position="0 1.6 0" movement-controls>
+        <a-camera></a-camera>
+      </a-entity>
+
+    </a-scene>
+  </body>
+</html>
