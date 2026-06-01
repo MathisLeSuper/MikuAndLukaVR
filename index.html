@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<title>MMD VR</title>
+<!-- viewport optimisé mobile + encoche, pas de zoom pour ne pas gêner les joysticks -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="mobile-web-app-capable" content="yes" />
+
+<!-- A-Frame (seule dépendance externe nécessaire) -->
+<script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+
+<!-- Polices distinctives (évite les polices génériques) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Sora:wght@400;600&display=swap" rel="stylesheet">
+
+<style>
+/* ====================== THÈME / VARIABLES ====================== */
+:root{
+  --bg:#0a0c12; --panel:rgba(13,17,26,0.88); --panel-solid:#0d111a;
+  --line:rgba(120,220,235,0.18); --line-strong:rgba(120,220,235,0.5);
+  --cyan:#36d6e7; --cyan-soft:#7fe9f3; --magenta:#ff5db1; --text:#eaf6f8; --muted:#8fa6ad;
+  --shadow:0 18px 60px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font-family:'Sora',system-ui,sans-serif;overflow:hidden;}
+
+/* ====================== OVERLAY 2D (PC / MOBILE) ====================== */
+#overlay{position:fixed;inset:0;z-index:50;pointer-events:none;}
+#overlay > *{pointer-events:auto;}
+
+/* Voile + ambiance derrière le menu */
+.scrim{position:fixed;inset:0;background:
+  radial-gradient(80% 60% at 50% 35%, rgba(54,214,231,.10), transparent 60%),
+  radial-gradient(60% 50% at 70% 80%, rgba(255,93,177,.08), transparent 60%),
+  rgba(5,7,11,.55);backdrop-filter:blur(3px);}
+
+/* Carte/menu centré (reste devant la caméra en 2D) */
+.card{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(92vw,420px);background:var(--panel);border:1px solid var(--line);
+  border-radius:18px;box-shadow:var(--shadow);padding:26px 24px 22px;
+  display:flex;flex-direction:column;gap:14px;}
+.card.hidden{display:none;}
+
+.brand{display:flex;flex-direction:column;align-items:center;gap:2px;margin-bottom:4px;}
+.brand h1{font-family:'Chakra Petch',sans-serif;font-weight:700;letter-spacing:.16em;
+  font-size:34px;margin:0;background:linear-gradient(92deg,var(--cyan),var(--magenta));
+  -webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 0 30px rgba(54,214,231,.25);}
+.brand .sub{font-size:11px;letter-spacing:.34em;color:var(--muted);text-transform:uppercase;}
+
+button.btn{font-family:'Chakra Petch',sans-serif;letter-spacing:.12em;font-weight:600;
+  font-size:16px;color:var(--text);background:linear-gradient(180deg,rgba(54,214,231,.16),rgba(54,214,231,.05));
+  border:1px solid var(--line-strong);border-radius:12px;padding:14px;cursor:pointer;
+  transition:transform .08s ease,box-shadow .2s ease,background .2s ease;}
+button.btn:hover{box-shadow:0 0 22px rgba(54,214,231,.25);transform:translateY(-1px);}
+button.btn:active{transform:translateY(0);}
+button.btn.ghost{background:rgba(255,255,255,.03);border-color:var(--line);}
+button.btn.primary{background:linear-gradient(180deg,rgba(54,214,231,.34),rgba(54,214,231,.12));}
+
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.section-title{font-family:'Chakra Petch',sans-serif;letter-spacing:.18em;font-size:12px;
+  color:var(--cyan-soft);text-transform:uppercase;margin:8px 0 2px;border-top:1px solid var(--line);padding-top:12px;}
+.label{font-size:13px;color:var(--muted);}
+.value{font-size:12px;color:var(--text);min-width:42px;text-align:right;font-variant-numeric:tabular-nums;}
+input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:4px;
+  background:linear-gradient(90deg,var(--cyan),rgba(120,220,235,.15));outline:none;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--cyan-soft);box-shadow:0 0 10px rgba(54,214,231,.6);cursor:pointer;}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-radius:50%;background:var(--cyan-soft);cursor:pointer;}
+
+.seg{display:flex;gap:6px;}
+.seg button{flex:1;font-family:'Chakra Petch',sans-serif;font-size:12px;letter-spacing:.08em;
+  padding:9px 0;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--muted);cursor:pointer;}
+.seg button.on{background:rgba(54,214,231,.2);border-color:var(--line-strong);color:var(--text);}
+
+.switch{position:relative;width:48px;height:26px;border-radius:20px;background:rgba(255,255,255,.08);
+  border:1px solid var(--line);cursor:pointer;transition:background .2s;}
+.switch.on{background:rgba(54,214,231,.3);}
+.switch i{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:var(--cyan-soft);transition:left .18s;}
+.switch.on i{left:24px;}
+
+.controls-box{font-size:12.5px;line-height:1.7;color:var(--muted);background:rgba(0,0,0,.25);
+  border:1px solid var(--line);border-radius:10px;padding:10px 12px;max-height:34vh;overflow:auto;}
+.controls-box b{color:var(--cyan-soft);font-family:'Chakra Petch',sans-serif;letter-spacing:.04em;}
+.scroll{max-height:62vh;overflow:auto;padding-right:4px;}
+
+/* Chargement / erreurs */
+#loading{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);font-size:12px;
+  letter-spacing:.2em;color:var(--cyan-soft);text-transform:uppercase;display:none;}
+/* Panneau de progression (chargement de scene.glb au PLAY) */
+#progress{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,420px);
+  background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);
+  padding:28px 26px;display:none;flex-direction:column;gap:16px;}
+#progress .ttl{font-family:'Chakra Petch',sans-serif;letter-spacing:.16em;color:var(--cyan-soft);
+  font-size:14px;text-align:center;}
+.bar{height:12px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid var(--line);overflow:hidden;}
+.bar > i{display:block;height:100%;width:0%;border-radius:8px;
+  background:linear-gradient(90deg,var(--cyan),var(--magenta));transition:width .15s ease;}
+.bar.indet > i{width:35%;animation:indet 1.1s ease-in-out infinite;}
+@keyframes indet{0%{margin-left:-40%}100%{margin-left:105%}}
+#progress .meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);
+  font-variant-numeric:tabular-nums;}
+#progress .pct{font-family:'Chakra Petch',sans-serif;font-size:26px;text-align:center;color:var(--text);}
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(54,214,231,.3);
+  border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:8px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+#errorBox{position:fixed;left:50%;top:18px;transform:translateX(-50%);max-width:90vw;
+  background:rgba(60,12,28,.92);border:1px solid var(--magenta);color:#ffd9ec;
+  padding:10px 16px;border-radius:10px;font-size:13px;display:none;z-index:80;}
+
+/* Astuce souris (PC) */
+#lockHint{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);font-size:12px;
+  color:var(--muted);background:rgba(0,0,0,.4);padding:8px 14px;border-radius:8px;
+  border:1px solid var(--line);display:none;cursor:pointer;z-index:60;}
+
+/* ====================== CONTRÔLES TACTILES (MOBILE) ====================== */
+#touch{position:fixed;inset:0;z-index:40;display:none;pointer-events:none;}
+.joy{position:absolute;bottom:24px;width:120px;height:120px;border-radius:50%;
+  background:rgba(255,255,255,.05);border:1px solid var(--line);pointer-events:auto;touch-action:none;}
+#joyL{left:22px;} #joyR{right:22px;}
+.joy .stick{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;
+  border-radius:50%;background:radial-gradient(circle at 40% 35%,var(--cyan-soft),var(--cyan));
+  box-shadow:0 0 16px rgba(54,214,231,.5);}
+.tbtns{position:absolute;right:18px;bottom:156px;display:flex;flex-direction:column;gap:10px;pointer-events:none;}
+.tbtn{pointer-events:auto;width:62px;height:62px;border-radius:50%;border:1px solid var(--line-strong);
+  background:rgba(13,17,26,.7);color:var(--cyan-soft);font-family:'Chakra Petch',sans-serif;font-size:11px;
+  letter-spacing:.05em;touch-action:none;display:flex;align-items:center;justify-content:center;text-align:center;}
+.tbtn:active,.tbtn.held{background:rgba(54,214,231,.3);color:#fff;}
+#openMenuBtn{position:fixed;top:14px;right:14px;z-index:45;display:none;width:auto;padding:8px 12px;border-radius:10px;
+  background:rgba(13,17,26,.7);border:1px solid var(--line);color:var(--cyan-soft);font-family:'Chakra Petch',sans-serif;
+  font-size:12px;letter-spacing:.1em;cursor:pointer;}
+</style>
+</head>
+<body>
+
+<!-- ============================================================= -->
+<!--  OVERLAY 2D : Menu principal + Réglages (PC / Mobile)         -->
+<!-- ============================================================= -->
+<div id="overlay">
+  <div class="scrim" id="scrim"></div>
+
+  <!-- MENU PRINCIPAL -->
+  <div class="card" id="mainMenu">
+    <div class="brand"><h1>MMD VR</h1><div class="sub">Live Stage Experience</div></div>
+    <button class="btn primary" id="playBtn">PLAY</button>
+    <button class="btn ghost" id="settingsBtn">SETTINGS</button>
+  </div>
+
+  <!-- PANNEAU RÉGLAGES -->
+  <div class="card hidden" id="settingsPanel">
+    <div class="brand"><h1 style="font-size:24px">SETTINGS</h1></div>
+    <div class="scroll">
+      <!-- AUDIO -->
+      <div class="section-title">Audio</div>
+      <div class="row"><span class="label">Volume</span>
+        <input type="range" id="volRange" min="0" max="100" value="80" style="flex:1">
+        <span class="value" id="volVal">80%</span></div>
+      <div class="row"><span class="label">Mute</span>
+        <div class="switch" id="muteSwitch"><i></i></div></div>
+
+      <!-- DÉPLACEMENT -->
+      <div class="section-title">Déplacement</div>
+      <div class="row"><span class="label">Vitesse joueur</span>
+        <input type="range" id="moveRange" min="1" max="10" step="0.5" value="3" style="flex:1">
+        <span class="value" id="moveVal">3.0</span></div>
+      <div class="row"><span class="label">Rotation souris (PC)</span>
+        <input type="range" id="mouseRange" min="0.5" max="5" step="0.1" value="2" style="flex:1">
+        <span class="value" id="mouseVal">2.0</span></div>
+      <div class="row"><span class="label">Rotation tactile</span>
+        <input type="range" id="touchRange" min="0.5" max="5" step="0.1" value="2" style="flex:1">
+        <span class="value" id="touchVal">2.0</span></div>
+      <div class="row"><span class="label">Ta taille (m)</span>
+        <input type="range" id="heightRange" min="1.2" max="2.0" step="0.01" value="1.60" style="flex:1">
+        <span class="value" id="heightVal">1.60</span></div>
+
+      <!-- GRAPHISMES -->
+      <div class="section-title">Graphismes</div>
+      <div class="seg" id="gfxSeg">
+        <button data-gfx="low">LOW</button>
+        <button data-gfx="medium" class="on">MEDIUM</button>
+        <button data-gfx="high">HIGH</button>
+      </div>
+
+      <!-- COMMANDES (auto-détectées) -->
+      <div class="section-title">Commandes — <span id="deviceName">PC</span></div>
+      <div class="controls-box" id="controlsBox"></div>
+    </div>
+    <button class="btn ghost" id="backBtn">RETOUR</button>
+  </div>
+
+  <!-- Bouton pour rouvrir le menu une fois en jeu -->
+  <button id="openMenuBtn">☰ MENU</button>
+
+  <!-- Chargement / erreurs / astuce souris -->
+  <div id="loading"></div>
+  <div id="progress">
+    <div class="ttl">CHARGEMENT DE LA SCÈNE</div>
+    <div class="pct" id="pPct">0%</div>
+    <div class="bar" id="bar"><i id="barFill"></i></div>
+    <div class="meta">
+      <span id="pSize">— Mo</span>
+      <span id="pEta">≈ … s restantes</span>
+    </div>
+  </div>
+  <div id="errorBox"></div>
+  <div id="lockHint">Cliquez pour activer la souris (regard) — Échap pour libérer</div>
+</div>
+
+<!-- Joysticks + boutons tactiles (mobile) -->
+<div id="touch">
+  <div class="joy" id="joyL"><div class="stick"></div></div>
+  <div class="joy" id="joyR"><div class="stick"></div></div>
+  <div class="tbtns">
+    <div class="tbtn" id="btnRun">RUN</div>
+    <div class="tbtn" id="btnUp">UP</div>
+    <div class="tbtn" id="btnDown">DOWN</div>
+    <div class="tbtn" id="btnJump">JUMP</div>
+  </div>
+</div>
+
+<!-- Élément audio HTML (synchronisé avec l'animation) -->
+<audio id="music" src="music.mp3" preload="auto" crossorigin="anonymous"></audio>
+
+<!-- ============================================================= -->
+<!--  SCÈNE A-FRAME / WEBXR                                         -->
+<!-- ============================================================= -->
+<a-scene id="scene"
+  background="color: #0a0c12"
+  shadow="type: pcf"
+  renderer="antialias: false; colorManagement: true; foveationLevel: 1; highRefreshRate: true; sortObjects: true"
+  webxr="optionalFeatures: hand-tracking, local-floor, bounded-floor"
+  xr-mode-ui="enabled: true"
+  loading-screen="enabled: false"
+  vr-bridge>
+
+  <!-- Aucun préchargement lourd : scene.glb n'est chargé qu'au clic sur PLAY -->
+  <a-assets timeout="60000"></a-assets>
+
+  <!-- Éclairage : ambiant + directionnel -->
+  <a-light type="ambient" color="#9fb4c4" intensity="0.95"></a-light>
+  <a-light id="dirLight" type="directional" color="#ffffff" intensity="1.15"
+           position="4 8 3" target="#mmd"></a-light>
+
+  <!-- Ciel + sol de référence (confort VR) -->
+  <a-sky id="sky" color="#0a0c12"></a-sky>
+  <a-entity id="ground" geometry="primitive: plane; width: 300; height: 300"
+            rotation="-90 0 0" position="0 -0.12 0"
+            material="color: #161a23; metalness: 0; roughness: 1"></a-entity>
+
+  <!-- Modèle MMD : chargé dynamiquement au PLAY (voir startLoading) -->
+  <a-entity id="mmd" position="0 0 0" mmd-sync></a-entity>
+
+  <!-- RIG joueur : se déplace au sol. La caméra (yeux à 1.6 m) est enfant. -->
+  <a-entity id="rig" position="0 0 4.5" rig-controls>
+    <a-entity id="camera" camera position="0 1.6 0" look-vr>
+      <!-- Menu in-world (VR) : suit le regard car parenté à la caméra -->
+      <a-entity id="vrMenu" position="0 0 -1.5" visible="false">
+        <a-plane width="1.5" height="1.05" color="#0d111a" opacity="0.92"
+                 material="side: double" class="vrpanel"></a-plane>
+        <a-text value="MMD VR" align="center" position="0 0.36 0.01" width="2.2"
+                color="#7fe9f3"></a-text>
+        <a-plane class="clickable vrbtn" id="vrPlay" width="1.0" height="0.18" position="0 0.08 0.01"
+                 color="#16586a" opacity="0.95"></a-plane>
+        <a-text id="vrPlayTxt" value="PLAY" align="center" position="0 0.08 0.02" width="2.4" color="#eaf6f8"></a-text>
+        <a-plane class="clickable vrbtn" id="vrGfx" width="1.0" height="0.16" position="0 -0.16 0.01"
+                 color="#15212e" opacity="0.95"></a-plane>
+        <a-text id="vrGfxTxt" value="Graphismes : MEDIUM" align="center" position="0 -0.16 0.02" width="2.2" color="#9fb4c4"></a-text>
+        <a-plane class="clickable vrbtn" id="vrMute" width="1.0" height="0.16" position="0 -0.36 0.01"
+                 color="#15212e" opacity="0.95"></a-plane>
+        <a-text id="vrMuteTxt" value="Son : ON" align="center" position="0 -0.36 0.02" width="2.2" color="#9fb4c4"></a-text>
+        <a-text value="Gâchette / pincement pour sélectionner"
+                align="center" position="0 -0.46 0.02" width="1.6" color="#5f7780"></a-text>
+      </a-entity>
+    </a-entity>
+
+    <!-- Mains VR : contrôleurs + suivi des mains, avec bascule auto -->
+    <a-entity id="leftHand"
+      oculus-touch-controls="hand: left"
+      hand-tracking-controls="hand: left; modelColor: #cfe9ee"
+      raycaster="objects: .clickable; far: 6; lineColor: #36d6e7; showLine: true"
+      cursor="fuse: false; downEvents: triggerdown, pinchstarted; upEvents: triggerup, pinchended"
+      vr-hand="hand: left"></a-entity>
+
+    <a-entity id="rightHand"
+      oculus-touch-controls="hand: right"
+      hand-tracking-controls="hand: right; modelColor: #ffd1e8"
+      raycaster="objects: .clickable; far: 6; lineColor: #36d6e7; showLine: true"
+      cursor="fuse: false; downEvents: triggerdown, pinchstarted; upEvents: triggerup, pinchended"
+      vr-hand="hand: right"></a-entity>
+  </a-entity>
+</a-scene>
+
+<script>
+/* =================================================================
+   ÉTAT GLOBAL
+   ================================================================= */
+const SETTINGS = {
+  volume: 0.8, muted: false,
+  moveSpeed: 3.0,      // m/s
+  runMultiplier: 1.8,
+  flySpeed: 2.5,       // m/s (monter/descendre)
+  jumpForce: 4.2,      // impulsion verticale
+  gravity: 9.8,
+  mouseSens: 2.0,      // rotation souris PC
+  touchSens: 2.0,      // rotation joystick droit (mobile)
+  vrTurnSpeed: 2.2,    // rotation joystick droit (VR)
+  graphics: 'medium',
+  eyeHeight: 1.60      // hauteur des yeux (PC/mobile) ; en VR c'est ta vraie taille
+};
+
+// Décor trop grand par rapport aux persos -> on le réduit (1/3 ≈ 3x plus petit).
+// Ajuste cette valeur si besoin (ex. 0.25 pour 4x plus petit).
+const STAGE_SCALE_FACTOR = 0.13;
+
+// Vecteurs/états d'entrée alimentés par clavier, tactile et VR
+const Input = {
+  move:{x:0,y:0},   // depuis joystick gauche / VR (clavier ajouté au tick)
+  lookAxis:{x:0,y:0}, // joystick droit (mobile)
+  mouseDX:0, mouseDY:0, // deltas souris (pointer lock)
+  vrTurn:0,          // axe X stick droit (VR)
+  jumpEdge:false,      // front montant du saut (consommé dans tick)
+  jumpHeld:false,      // saut maintenu (sert à monter en vol)
+  descendHeld:false,   // Ctrl / X / bouton DOWN -> descendre
+  up:false, run:false  // bouton UP (monter direct) / course
+};
+const keys = {}; // touches pressées (clavier)
+
+/* Visibilité show/hide extraite des VMD (secondes ; 1=visible, 0=caché).
+   Ex. : Luka est cachée de 0 à 40 s, puis Miku/Luka alternent (duo). */
+const VISIBILITY = {
+  Miku: [[0,1],[68.967,0],[83.367,1],[169.967,0],[171.833,1],[177.633,0],[179.333,1]],
+  Luka: [[0,0],[40.267,1],[41.2,0],[48.7,1],[66.033,0],[68.967,1],[166.3,0],[168.0,1],[173.8,0],[175.667,1]]
+};
+function visAt(tl, tt){ let v = tl[0][1]; for (let i=0;i<tl.length;i++){ if (tt >= tl[i][0]) v = tl[i][1]; else break; } return v; }
+function applyVisibility(nodes, tt){
+  for (const name in nodes){ const n = nodes[name], tl = VISIBILITY[name];
+    if (n && tl){ const want = !!visAt(tl, tt); if (n.visible !== want) n.visible = want; } }
+}
+
+let started = false;        // PLAY a été pressé
+let paused = false;         // animation/musique en pause
+let audioOk = true;         // music.mp3 chargé ?
+let modelLoaded = false;    // scene.glb chargé ?
+let loading = false;        // chargement en cours ?
+let modelEntity, sceneEl, audioEl;
+
+/* =================================================================
+   DÉTECTION DE L'APPAREIL  (PC / Mobile / VR)
+   ================================================================= */
+// iPadOS se fait passer pour "Macintosh" : on détecte donc par capacité tactile
+// + pointeur grossier (coarse) plutôt que par user-agent.
+const hasTouch = (navigator.maxTouchPoints > 0) || ('ontouchstart' in window);
+const hasFinePointer = window.matchMedia && window.matchMedia('(pointer: fine)').matches;
+const isTouch = hasTouch && !hasFinePointer;
+function deviceLabel(){
+  if (sceneEl && sceneEl.is('vr-mode')) return 'VR';
+  return isTouch ? 'Mobile' : 'PC';
+}
+
+/* Texte des commandes selon l'appareil */
+function controlsText(){
+  if (isTouch) return `
+    <b>Joystick gauche</b> — Avancer / reculer / gauche / droite<br>
+    <b>Joystick droit</b> — Tourner la caméra<br>
+    <b>JUMP</b> — 1 appui : sauter · 2 appuis rapides : voler (maintenir = monter)<br>
+    <b>DOWN</b> — Descendre &nbsp; <b>UP</b> — Monter &nbsp; <b>RUN</b> — Courir<br>
+    <b>☰ MENU</b> — Pause`;
+  // En VR le casque affiche aussi ces infos via le panneau in-world
+  return `
+    <b>Z Q S D</b> / <b>W A S D</b> — Déplacement<br>
+    <b>Espace</b> — 1 appui : sauter · 2 appuis rapides : voler (maintenir = monter)<br>
+    <b>Ctrl gauche</b> — Descendre &nbsp; <b>Shift</b> — Courir<br>
+    <b>Souris</b> — Rotation (clic pour verrouiller) &nbsp; <b>Échap</b> — Pause<br>
+    <hr style="border-color:rgba(120,220,235,.15)">
+    <b>VR Quest</b> — Stick gauche : déplacement · Stick droit : rotation<br>
+    <b>A</b> : sauter / voler (double-appui) · <b>X</b> : descendre · <b>B</b> : pause<br>
+    mains & contrôleurs détectés automatiquement`;
+}
+
+/* =================================================================
+   COMPOSANT : synchro animations <-> musique
+   ================================================================= */
+AFRAME.registerComponent('mmd-sync', {
+  init(){
+    this.mixer = null; this.actions = []; this.maxDur = 0; this.visNodes = {};
+    this.el.addEventListener('model-loaded', (e)=>{
+      const model = e.detail.model;
+      const clips = model.animations || [];
+      if (!clips.length){ console.warn('Aucune animation dans le glb'); }
+      this.mixer = new THREE.AnimationMixer(model);
+      clips.forEach(clip=>{
+        const a = this.mixer.clipAction(clip);
+        a.loop = THREE.LoopRepeat; a.clampWhenFinished = false; a.play();
+        this.actions.push(a);
+        this.maxDur = Math.max(this.maxDur, clip.duration);
+      });
+      this.mixer.setTime(0); // affiche la 1re pose (pas le bind pose)
+      // Racines des persos pour gérer leur visibilité (show/hide du VMD)
+      this.visNodes.Miku = model.getObjectByName('MikuRoot');
+      this.visNodes.Luka = model.getObjectByName('LukaRoot');
+      // Les persos se déplacent loin de l'origine -> on coupe le frustum culling
+      // pour éviter qu'ils disparaissent à certains angles de caméra.
+      model.traverse(o=>{ if (o.isMesh) o.frustumCulled = false; });
+
+      // --- Décor : réduit l'échelle et recale le plancher de scène sur y=0 ---
+      const stage = model.getObjectByName('Stage');
+      if (stage){
+        const baseScale = stage.scale.x;                 // échelle bakée (0.08)
+        // 1) Mesure la hauteur du sol en unités NATIVES (rayon fixe, indépendant de l'échelle)
+        stage.scale.setScalar(1); stage.position.set(0,0,0); stage.updateMatrixWorld(true);
+        const ys = []; const v = new THREE.Vector3();
+        stage.traverse(o=>{
+          if (o.isMesh && o.geometry.attributes.position){
+            const p = o.geometry.attributes.position, st = Math.max(1, Math.floor(p.count/300));
+            for (let i=0;i<p.count;i+=st){ v.fromBufferAttribute(p,i).applyMatrix4(o.matrixWorld);
+              if (Math.hypot(v.x, v.z) < 50) ys.push(v.y); }   // 50 unités natives autour du centre
+          }
+        });
+        const floorNative = ys.length ? ys.sort((a,b)=>a-b)[Math.floor(ys.length/2)] : 0;
+        // 2) Échelle finale + plancher recalé sur y=0 (pieds des persos)
+        const s = baseScale * STAGE_SCALE_FACTOR;
+        stage.scale.setScalar(s);
+        stage.position.set(0, -floorNative * s, 0);
+        stage.updateMatrixWorld(true);
+      }
+
+      applyVisibility(this.visNodes, 0); // état initial (Luka cachée au début)
+    });
+    this.el.addEventListener('model-error', ()=> showError("Échec du chargement de scene.glb (fichier introuvable ?)"));
+  },
+  tick(time, dt){
+    if (!this.mixer || !started || paused) return;
+    if (audioOk && audioEl && !audioEl.paused){
+      // L'animation suit l'horloge audio => synchro parfaite (avec boucle)
+      this.mixer.setTime(audioEl.currentTime % (this.maxDur || 1));
+    } else {
+      // Repli : horloge interne si l'audio est indisponible
+      this.mixer.update((dt || 16) / 1000);
+    }
+    // Visibilité show/hide synchronisée sur le temps courant
+    applyVisibility(this.visNodes, this.mixer.time % (this.maxDur || 1));
+  }
+});
+
+/* =================================================================
+   COMPOSANT : tête en VR (laisse le casque piloter le regard)
+   En non-VR, on ne fait rien ici : la rotation est gérée par rig-controls.
+   ================================================================= */
+AFRAME.registerComponent('look-vr', {
+  init(){ this.pitchObj = this.el.object3D; }
+  // Pas de tick : en VR A-Frame applique automatiquement la pose du casque.
+});
+
+/* =================================================================
+   COMPOSANT : déplacement + rotation du joueur (PC / Mobile / VR)
+   ================================================================= */
+AFRAME.registerComponent('rig-controls', {
+  init(){
+    this.rig = this.el.object3D;
+    this.cam = document.getElementById('camera').object3D;
+    this.yaw = 0; this.pitch = 0;
+    this.vy = 0; this.grounded = true;     // saut / gravité
+    this.flying = false;                    // mode vol
+    this.lastJumpTime = 0;                  // pour détecter le double-appui
+    this._fwd = new THREE.Vector3();
+    this._right = new THREE.Vector3();
+  },
+  tick(time, dt){
+    if (!started || paused) return;         // figé quand en pause
+    const d = Math.min((dt||16)/1000, 0.05); // clamp pour éviter les sauts
+    const inVR = sceneEl.is('vr-mode');
+
+    /* ---------- ROTATION ---------- */
+    if (inVR){
+      // Regard = casque ; rotation par stick droit appliquée au rig (yaw)
+      this.yaw -= Input.vrTurn * SETTINGS.vrTurnSpeed * d;
+      this.rig.rotation.y = this.yaw;
+    } else {
+      // Souris (PC) + joystick droit (mobile)
+      const ms = SETTINGS.mouseSens, ts = SETTINGS.touchSens;
+      this.yaw   -= (Input.mouseDX * 0.0022 * ms) + (Input.lookAxis.x * ts * d);
+      this.pitch -= (Input.mouseDY * 0.0022 * ms) + (Input.lookAxis.y * ts * d);
+      Input.mouseDX = 0; Input.mouseDY = 0;
+      const lim = Math.PI/2 - 0.05;
+      this.pitch = Math.max(-lim, Math.min(lim, this.pitch));
+      this.rig.rotation.y = this.yaw;
+      this.cam.rotation.x = this.pitch;
+    }
+
+    /* ---------- ENTRÉE DE DÉPLACEMENT ---------- */
+    // Convention : "avant" = mz négatif (cohérent avec le stick VR avant = -1)
+    let mx = Input.move.x, mz = Input.move.y;
+    if (keys.fwd) mz -= 1; if (keys.back) mz += 1;
+    if (keys.left) mx -= 1; if (keys.right) mx += 1;
+    const len = Math.hypot(mx, mz);
+    if (len > 1){ mx/=len; mz/=len; }
+
+    // Direction relative au regard (caméra), projetée au sol
+    this.cam.getWorldDirection(this._fwd);
+    this._fwd.y = 0; this._fwd.normalize();
+    this._right.set(this._fwd.z, 0, -this._fwd.x); // perpendiculaire horizontale
+
+    const run = (Input.run || keys.run) ? SETTINGS.runMultiplier : 1;
+    const sp = SETTINGS.moveSpeed * run * d;
+    // Convention unique : mz < 0 = avancer (vers le regard), mx > 0 = droite.
+    this.rig.position.x += (this._fwd.x * mz + this._right.x * mx) * sp;
+    this.rig.position.z += (this._fwd.z * mz + this._right.z * mx) * sp;
+
+    /* ---------- SAUT / VOL (double-appui = (dés)activer le vol) ---------- */
+    if (Input.jumpEdge){
+      Input.jumpEdge = false;
+      const now = performance.now();
+      if (now - this.lastJumpTime < 280){      // double-appui rapide -> bascule vol
+        this.flying = !this.flying; this.vy = 0;
+      } else if (!this.flying && this.grounded){ // simple appui -> saut
+        this.vy = SETTINGS.jumpForce; this.grounded = false;
+      }
+      this.lastJumpTime = now;
+    }
+    // Le bouton UP (mobile) monte directement et enclenche le vol
+    if (Input.up && !this.flying){ this.flying = true; this.vy = 0; }
+
+    if (this.flying){
+      // Vol : pas de gravité. Monter = saut maintenu ou UP ; descendre = Ctrl/X/DOWN
+      let vy = 0;
+      if (Input.jumpHeld || Input.up) vy += SETTINGS.flySpeed;
+      if (Input.descendHeld)          vy -= SETTINGS.flySpeed;
+      this.rig.position.y += vy * d;
+      if (this.rig.position.y < 0) this.rig.position.y = 0;
+    } else {
+      // Marche : gravité + saut
+      this.vy -= SETTINGS.gravity * d;
+      this.rig.position.y += this.vy * d;
+      if (this.rig.position.y <= 0){ this.rig.position.y = 0; this.vy = 0; this.grounded = true; }
+    }
+  }
+});
+
+/* =================================================================
+   COMPOSANT : mains VR — lit sticks et boutons (A monte / X descend)
+   ================================================================= */
+AFRAME.registerComponent('vr-hand', {
+  schema:{ hand:{default:'left'} },
+  init(){
+    const left = this.data.hand === 'left';
+    // Déplacement = stick gauche ; rotation = stick droit
+    this.el.addEventListener('thumbstickmoved', (e)=>{
+      if (left){ Input.move.x = e.detail.x; Input.move.y = e.detail.y; }  // avant = avant
+      else     { Input.vrTurn = e.detail.x; }
+    });
+    // Boutons : A (droit) = saut/vol · B (droit) = pause · X (gauche) = descendre · Y (gauche) = course
+    if (!left){
+      this.el.addEventListener('abuttondown', ()=>{ Input.jumpEdge = true; Input.jumpHeld = true; });
+      this.el.addEventListener('abuttonup',   ()=> Input.jumpHeld = false);
+      this.el.addEventListener('bbuttondown', ()=> togglePause());
+    } else {
+      this.el.addEventListener('xbuttondown', ()=> Input.descendHeld = true);
+      this.el.addEventListener('xbuttonup',   ()=> Input.descendHeld = false);
+      this.el.addEventListener('ybuttondown', ()=> Input.run = !Input.run);
+    }
+  }
+});
+
+/* =================================================================
+   COMPOSANT : ponts d'événements de scène (VR enter/exit, etc.)
+   ================================================================= */
+AFRAME.registerComponent('vr-bridge', {
+  init(){
+    sceneEl = this.el;
+    this.el.addEventListener('enter-vr', ()=>{
+      document.getElementById('overlay').style.display = 'none';
+      document.getElementById('touch').style.display = 'none';
+      // le casque pilote le regard : on remet le tangage local à zéro
+      const camO = document.getElementById('camera').object3D; camO.rotation.set(0,0,0);
+      if (!started) document.getElementById('vrMenu').setAttribute('visible', true);
+    });
+    this.el.addEventListener('exit-vr', ()=>{
+      document.getElementById('overlay').style.display = '';
+      if (isTouch && started) document.getElementById('touch').style.display = 'block';
+    });
+  }
+});
+
+/* =================================================================
+   INITIALISATION UI (après chargement du DOM)
+   ================================================================= */
+window.addEventListener('DOMContentLoaded', ()=>{
+  modelEntity = document.getElementById('mmd');
+  sceneEl = document.getElementById('scene');
+  audioEl = document.getElementById('music');
+
+  // --- Audio : volume / mute / erreurs ---
+  audioEl.volume = SETTINGS.volume;
+  audioEl.addEventListener('error', ()=>{
+    audioOk = false;
+    showError("music.mp3 introuvable — l'animation tournera sans son.");
+  });
+
+  // --- Détection appareil : affichage commandes + joysticks ---
+  document.getElementById('deviceName').textContent = deviceLabel();
+  document.getElementById('controlsBox').innerHTML = controlsText();
+  if (isTouch) document.getElementById('touch').style.display = 'none'; // affiché au PLAY
+
+  // --- Menu principal ---
+  const mainMenu = document.getElementById('mainMenu');
+  const settingsPanel = document.getElementById('settingsPanel');
+  document.getElementById('playBtn').addEventListener('click', onPlay);
+  document.getElementById('settingsBtn').addEventListener('click', ()=>{
+    mainMenu.classList.add('hidden'); settingsPanel.classList.remove('hidden');
+  });
+  document.getElementById('backBtn').addEventListener('click', ()=>{
+    settingsPanel.classList.add('hidden'); mainMenu.classList.remove('hidden');
+  });
+  document.getElementById('openMenuBtn').addEventListener('click', openMenuMidGame);
+
+  // --- Réglages : Audio ---
+  bindRange('volRange','volVal', v=>{ SETTINGS.volume = v/100; audioEl.volume = SETTINGS.muted?0:SETTINGS.volume; return Math.round(v)+'%'; });
+  const muteSwitch = document.getElementById('muteSwitch');
+  muteSwitch.addEventListener('click', ()=>{
+    SETTINGS.muted = !SETTINGS.muted; muteSwitch.classList.toggle('on', SETTINGS.muted);
+    audioEl.volume = SETTINGS.muted ? 0 : SETTINGS.volume;
+    syncVrMute();
+  });
+
+  // --- Réglages : Déplacement ---
+  bindRange('moveRange','moveVal', v=>{ SETTINGS.moveSpeed = v; return v.toFixed(1); });
+  bindRange('mouseRange','mouseVal', v=>{ SETTINGS.mouseSens = v; return v.toFixed(1); });
+  bindRange('touchRange','touchVal', v=>{ SETTINGS.touchSens = v; SETTINGS.vrTurnSpeed = v*1.1; return v.toFixed(1); });
+  bindRange('heightRange','heightVal', v=>{ SETTINGS.eyeHeight = v; applyEyeHeight(); return v.toFixed(2); });
+
+  // --- Réglages : Graphismes ---
+  document.querySelectorAll('#gfxSeg button').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      document.querySelectorAll('#gfxSeg button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on'); applyGraphics(b.dataset.gfx);
+    });
+  });
+
+  // --- Clavier (PC) : ZQSD + WASD via event.key (indépendant du layout) ---
+  window.addEventListener('keydown', e=> setKey(e, true));
+  window.addEventListener('keyup',   e=> setKey(e, false));
+
+  // --- Souris (PC) : pointer lock + rotation ---
+  setupMouseLook();
+
+  // --- Tactile (mobile) : joysticks + boutons ---
+  setupTouch();
+
+  // --- Menu VR in-world ---
+  setupVrMenu();
+
+  // Applique le préréglage par défaut
+  applyGraphics('medium');
+});
+
+/* ----- Helpers UI ----- */
+function bindRange(id, valId, fn){
+  const r = document.getElementById(id), out = document.getElementById(valId);
+  const upd = ()=> out.textContent = fn(parseFloat(r.value));
+  r.addEventListener('input', upd); upd();
+}
+/* Hauteur des yeux (PC/mobile). En VR, c'est ta vraie taille via le casque. */
+function applyEyeHeight(){
+  const cam = document.getElementById('camera');
+  if (cam) cam.setAttribute('position', {x:0, y:SETTINGS.eyeHeight, z:0});
+}
+function showError(msg){
+  const b = document.getElementById('errorBox'); b.textContent = msg; b.style.display = 'block';
+}
+
+/* =================================================================
+   DÉMARRAGE / MENU  —  scene.glb n'est chargé qu'ici (au PLAY)
+   ================================================================= */
+function onPlay(){
+  if (paused){ resumeGame(); return; }            // reprendre après une pause
+  // Le menu reste utilisable tant qu'on n'a pas cliqué PLAY ; ici on cache le menu.
+  document.getElementById('mainMenu').classList.add('hidden');
+  document.getElementById('settingsPanel').classList.add('hidden');
+  document.getElementById('scrim').style.display = 'none';
+  if (modelLoaded){ beginPlayback(); return; }   // déjà chargé -> on lance
+  if (!loading) startLoading();                   // sinon -> chargement avec jauge
+}
+
+/* Charge scene.glb à la demande et met à jour la jauge (% + temps restant) */
+function startLoading(){
+  loading = true;
+  const prog = document.getElementById('progress');
+  const bar = document.getElementById('bar'), fill = document.getElementById('barFill');
+  const vrTxt = document.getElementById('vrPlayTxt'); // feedback dans le panneau VR
+  prog.style.display = 'flex';
+  const t0 = performance.now();
+
+  const loader = new THREE.GLTFLoader();
+  loader.load('scene.glb',
+    // ---- succès ----
+    (gltf)=>{
+      const model = gltf.scene;
+      model.animations = gltf.animations || []; // mmd-sync lit model.animations
+      modelEntity.setObject3D('mesh', model);
+      modelEntity.emit('model-loaded', { format:'gltf', model: model }); // construit le mixer
+      modelLoaded = true; loading = false;
+      prog.style.display = 'none';
+      if (vrTxt) vrTxt.setAttribute('value','PLAY');
+      precompile(model);   // évite le gel quand Luka apparaît
+      beginPlayback();
+    },
+    // ---- progression ----
+    (xhr)=>{
+      let pct = null, etaTxt, sizeTxt;
+      if (xhr.lengthComputable && xhr.total > 0){
+        const r = xhr.loaded / xhr.total; pct = Math.min(100, Math.round(r*100));
+        const elapsed = (performance.now()-t0)/1000;          // s écoulées
+        const speed = xhr.loaded / Math.max(elapsed, 0.001);  // octets/s
+        const eta = speed > 0 ? (xhr.total - xhr.loaded)/speed : 0;
+        bar.classList.remove('indet'); fill.style.width = pct + '%';
+        etaTxt = '≈ ' + Math.max(0, Math.ceil(eta)) + ' s restantes';
+        sizeTxt = (xhr.loaded/1048576).toFixed(1) + ' / ' + (xhr.total/1048576).toFixed(1) + ' Mo';
+      } else {
+        // Taille inconnue (pas d'en-tête Content-Length) : barre indéterminée
+        bar.classList.add('indet');
+        etaTxt = 'estimation…';
+        sizeTxt = (xhr.loaded/1048576).toFixed(1) + ' Mo';
+      }
+      document.getElementById('pPct').textContent = (pct===null ? '…' : pct + '%');
+      document.getElementById('pEta').textContent = etaTxt;
+      document.getElementById('pSize').textContent = sizeTxt;
+      if (vrTxt) vrTxt.setAttribute('value', 'CHARGEMENT ' + (pct===null?'…':pct+'%'));
+    },
+    // ---- erreur ----
+    (err)=>{
+      loading = false; prog.style.display = 'none';
+      showError("Échec du chargement de scene.glb (fichier introuvable ?)");
+      if (vrTxt) vrTxt.setAttribute('value','ERREUR');
+    }
+  );
+}
+
+/* Précompile les shaders + force l'upload GPU des 2 persos (Luka cachée au début,
+   sinon ses matériaux se compilent quand elle apparaît -> gel de ~5 s). */
+function precompile(model){
+  try{
+    const r = sceneEl.renderer, cam = sceneEl.camera;
+    if (!r) return;
+    const roots = ['MikuRoot','LukaRoot'].map(n=>model.getObjectByName(n)).filter(Boolean);
+    const saved = roots.map(o=>o.visible);
+    roots.forEach(o=>o.visible = true);
+    model.updateMatrixWorld(true);
+    if (r.compile) r.compile(sceneEl.object3D, cam);
+    r.render(sceneEl.object3D, cam);   // force l'upload des géométries/matériaux
+    roots.forEach((o,i)=>o.visible = saved[i]);
+  }catch(e){ console.warn('precompile ignoré', e); }
+}
+
+/* Lance réellement la lecture : musique + animation synchronisées depuis t=0 */
+function beginPlayback(){
+  started = true;
+  document.getElementById('vrMenu').setAttribute('visible', false);
+  document.getElementById('openMenuBtn').style.display = 'block';
+  if (audioOk){
+    audioEl.currentTime = 0;
+    audioEl.volume = SETTINGS.muted ? 0 : SETTINGS.volume;
+    audioEl.play().catch(()=>{ audioOk = false; showError("Lecture audio bloquée — animation sans son."); });
+  }
+  if (isTouch && !sceneEl.is('vr-mode')) document.getElementById('touch').style.display = 'block';
+  if (!isTouch && !sceneEl.is('vr-mode')) requestLock();
+}
+function openMenuMidGame(){ pauseGame(); }
+
+/* =================================================================
+   PAUSE : Échap (PC) / ☰ (mobile) / bouton B (Quest)
+   ================================================================= */
+function togglePause(){
+  if (!started) return;
+  if (paused) resumeGame(); else pauseGame();
+}
+function pauseGame(){
+  if (!started || paused) return;
+  paused = true;
+  if (audioOk) audioEl.pause();                  // fige musique + animation (tick gelé)
+  document.getElementById('mainMenu').classList.remove('hidden');
+  document.getElementById('scrim').style.display = '';
+  document.getElementById('touch').style.display = 'none';
+  if (document.pointerLockElement) document.exitPointerLock();
+  if (sceneEl.is('vr-mode')) document.getElementById('vrMenu').setAttribute('visible', true);
+}
+function resumeGame(){
+  if (!paused) return;
+  paused = false;
+  document.getElementById('mainMenu').classList.add('hidden');
+  document.getElementById('settingsPanel').classList.add('hidden');
+  document.getElementById('scrim').style.display = 'none';
+  document.getElementById('vrMenu').setAttribute('visible', false);
+  if (audioOk) audioEl.play().catch(()=>{});
+  if (isTouch && !sceneEl.is('vr-mode')) document.getElementById('touch').style.display = 'block';
+  if (!isTouch && !sceneEl.is('vr-mode')) requestLock();
+}
+
+/* =================================================================
+   CLAVIER  (ZQSD + WASD + flèches)
+   ================================================================= */
+function setKey(e, down){
+  const k = e.key.toLowerCase();
+  switch(k){
+    case 'z': case 'w': case 'arrowup':    keys.fwd = down; break;
+    case 's': case 'arrowdown':            keys.back = down; break;
+    case 'q': case 'a': case 'arrowleft':  keys.left = down; break;
+    case 'd': case 'arrowright':           keys.right = down; break;
+    case ' ':                              // Espace = saut (1 appui) / double-appui = vol
+      if (down && !Input.jumpHeld) Input.jumpEdge = true;
+      Input.jumpHeld = down; e.preventDefault(); break;
+    case 'control': Input.descendHeld = down; break;   // Ctrl = descendre
+    case 'shift':   keys.run = down; break;            // Shift = courir
+    case 'escape':  if (down) togglePause(); break;    // Échap = pause
+  }
+}
+
+/* =================================================================
+   SOURIS PC  (pointer lock + sensibilité réglable)
+   ================================================================= */
+function setupMouseLook(){
+  const hint = document.getElementById('lockHint');
+  const canvas = ()=> sceneEl.canvas || document.querySelector('canvas');
+  document.addEventListener('mousemove', (e)=>{
+    if (document.pointerLockElement){
+      Input.mouseDX += e.movementX; Input.mouseDY += e.movementY;
+    }
+  });
+  document.addEventListener('pointerlockchange', ()=>{
+    const locked = !!document.pointerLockElement;
+    hint.style.display = (started && !locked && !isTouch && !sceneEl.is('vr-mode')) ? 'block' : 'none';
+  });
+  hint.addEventListener('click', requestLock);
+  // re-verrouille en cliquant dans la scène
+  document.addEventListener('click', (e)=>{
+    if (started && !isTouch && !sceneEl.is('vr-mode') && !document.pointerLockElement){
+      if (e.target.closest('#overlay')) return; // ne pas reverrouiller en cliquant l'UI 2D
+      requestLock();
+    }
+  });
+}
+function requestLock(){ const c = sceneEl.canvas || document.querySelector('canvas'); if (c && c.requestPointerLock) c.requestPointerLock(); }
+
+/* =================================================================
+   TACTILE MOBILE : 2 joysticks + boutons
+   ================================================================= */
+function setupTouch(){
+  makeJoystick('joyL', (x,y)=>{ Input.move.x = x; Input.move.y = -y; }); // haut = avancer
+  makeJoystick('joyR', (x,y)=>{ Input.lookAxis.x = x; Input.lookAxis.y = y; });
+  holdBtn('btnUp',   v=> Input.up = v);            // monter (enclenche le vol)
+  holdBtn('btnDown', v=> Input.descendHeld = v);   // descendre
+  holdBtn('btnRun',  v=> Input.run = v);           // courir
+  // JUMP : 1 appui = saut · double-appui = (dés)activer le vol · maintenu en vol = monter
+  const jb = document.getElementById('btnJump');
+  jb.addEventListener('touchstart', (e)=>{ e.preventDefault(); Input.jumpEdge = true; Input.jumpHeld = true; jb.classList.add('held'); }, {passive:false});
+  const jbEnd = (e)=>{ e.preventDefault(); Input.jumpHeld = false; jb.classList.remove('held'); };
+  jb.addEventListener('touchend', jbEnd, {passive:false});
+  jb.addEventListener('touchcancel', jbEnd, {passive:false});
+}
+function makeJoystick(id, cb){
+  const base = document.getElementById(id), stick = base.querySelector('.stick');
+  let touchId = null; const R = 44;
+  const center = ()=>{ const r = base.getBoundingClientRect(); return {cx:r.left+r.width/2, cy:r.top+r.height/2}; };
+  const move = (cx,cy,tx,ty)=>{
+    let dx = tx-cx, dy = ty-cy; const dist = Math.hypot(dx,dy);
+    if (dist > R){ dx = dx/dist*R; dy = dy/dist*R; }
+    stick.style.transform = `translate(${dx}px,${dy}px)`;
+    cb(dx/R, -dy/R); // y: haut = positif
+  };
+  base.addEventListener('touchstart', (e)=>{ e.preventDefault(); const t = e.changedTouches[0]; touchId = t.identifier;
+    const {cx,cy} = center(); move(cx,cy,t.clientX,t.clientY); }, {passive:false});
+  base.addEventListener('touchmove', (e)=>{ e.preventDefault();
+    for (const t of e.changedTouches) if (t.identifier===touchId){ const {cx,cy}=center(); move(cx,cy,t.clientX,t.clientY); } }, {passive:false});
+  const end = (e)=>{ for (const t of e.changedTouches) if (t.identifier===touchId){ touchId=null; stick.style.transform='translate(0,0)'; cb(0,0); } };
+  base.addEventListener('touchend', end); base.addEventListener('touchcancel', end);
+}
+function holdBtn(id, cb){
+  const b = document.getElementById(id);
+  const on = (e)=>{ e.preventDefault(); b.classList.add('held'); cb(true); };
+  const off = (e)=>{ e.preventDefault(); b.classList.remove('held'); cb(false); };
+  b.addEventListener('touchstart', on, {passive:false});
+  b.addEventListener('touchend', off, {passive:false});
+  b.addEventListener('touchcancel', off, {passive:false});
+}
+
+/* =================================================================
+   GRAPHISMES : Low / Medium / High (perf Quest 3)
+   ================================================================= */
+function applyGraphics(level){
+  SETTINGS.graphics = level;
+  const renderer = sceneEl.renderer; if (!renderer) { sceneEl.addEventListener('loaded', ()=>applyGraphics(level), {once:true}); return; }
+  const dir = document.getElementById('dirLight');
+  const dpr = window.devicePixelRatio || 1;
+  if (level === 'low'){
+    renderer.setPixelRatio(Math.min(dpr, 0.8));
+    renderer.shadowMap.enabled = false;
+    if (dir) dir.setAttribute('light','castShadow', false);
+    sceneEl.setAttribute('shadow','type','basic');
+  } else if (level === 'high'){
+    renderer.setPixelRatio(Math.min(dpr, 2));
+    renderer.shadowMap.enabled = true;
+    if (dir) dir.setAttribute('light','castShadow: true; shadowMapWidth: 1024; shadowMapHeight: 1024');
+    sceneEl.setAttribute('shadow','type','pcf');
+  } else { // medium (équilibré, défaut)
+    renderer.setPixelRatio(Math.min(dpr, 1.0));
+    renderer.shadowMap.enabled = false;
+    if (dir) dir.setAttribute('light','castShadow', false);
+  }
+  // Met à jour le libellé VR
+  const t = document.getElementById('vrGfxTxt'); if (t) t.setAttribute('value','Graphismes : '+level.toUpperCase());
+}
+
+/* =================================================================
+   MENU VR IN-WORLD (boutons cliquables au laser / pincement)
+   ================================================================= */
+function setupVrMenu(){
+  const order = ['low','medium','high'];
+  document.getElementById('vrPlay').addEventListener('click', onPlay);
+  document.getElementById('vrGfx').addEventListener('click', ()=>{
+    const i = (order.indexOf(SETTINGS.graphics)+1) % order.length;
+    applyGraphics(order[i]);
+    // reflète l'état dans le segment 2D
+    document.querySelectorAll('#gfxSeg button').forEach(x=>x.classList.toggle('on', x.dataset.gfx===order[i]));
+  });
+  document.getElementById('vrMute').addEventListener('click', ()=>{
+    SETTINGS.muted = !SETTINGS.muted;
+    audioEl.volume = SETTINGS.muted ? 0 : SETTINGS.volume;
+    document.getElementById('muteSwitch').classList.toggle('on', SETTINGS.muted);
+    syncVrMute();
+  });
+}
+function syncVrMute(){ const t = document.getElementById('vrMuteTxt'); if (t) t.setAttribute('value','Son : '+(SETTINGS.muted?'OFF':'ON')); }
+</script>
+</body>
+</html>
