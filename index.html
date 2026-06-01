@@ -176,6 +176,11 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
         <span class="value" id="heightVal">1.60</span></div>
       <div class="row"><span class="label">Collisions avec le décor</span>
         <div class="switch" id="collideSwitch"><i></i></div></div>
+      <div class="row"><span class="label">Physique (cheveux, vêtements)</span>
+        <div class="switch on" id="physSwitch"><i></i></div></div>
+      <div class="row"><span class="label">Hauteur du sol (m)</span>
+        <input type="range" id="groundRange" min="-0.5" max="0.3" step="0.01" value="-0.05" style="flex:1">
+        <span class="value" id="groundVal">-0.05</span></div>
 
       <!-- GRAPHISMES -->
       <div class="section-title">Graphismes</div>
@@ -310,12 +315,21 @@ const SETTINGS = {
   vrTurnSpeed: 2.2,    // rotation joystick droit (VR)
   graphics: 'medium',
   eyeHeight: 1.60,     // hauteur des yeux (PC/mobile) ; en VR c'est ta vraie taille
-  collisions: false    // collisions avec le décor (expérimental)
+  collisions: false,   // collisions avec le décor (expérimental)
+  physics: true        // physique cheveux/vêtements (charge scene_physics.glb)
 };
 
 // Décor trop grand par rapport aux persos -> on le réduit (1/3 ≈ 3x plus petit).
 // Ajuste cette valeur si besoin (ex. 0.25 pour 4x plus petit).
 const STAGE_SCALE_FACTOR = 0.13;
+
+// === RÉGLAGES FACILES À MODIFIER ===
+// Hauteur de la plaque de sol (gris). Le décor du stage est un peu sous le disque central :
+// descends cette valeur (plus négative) jusqu'à ce que le sol du stage soit visible.
+let GROUND_Y = -0.05;
+// Fond 360° : mets le nom d'une image equirectangulaire (ex. 'sky.png') placée à côté de index.html.
+// Laisse '' pour garder le fond noir.
+const SKY_IMAGE = '';
 
 // Vecteurs/états d'entrée alimentés par clavier, tactile et VR
 const Input = {
@@ -659,12 +673,19 @@ window.addEventListener('DOMContentLoaded', ()=>{
     SETTINGS.collisions = !SETTINGS.collisions;
     collideSwitch.classList.toggle('on', SETTINGS.collisions);
   });
+  const physSwitch = document.getElementById('physSwitch');
+  physSwitch.addEventListener('click', ()=>{
+    SETTINGS.physics = !SETTINGS.physics;
+    physSwitch.classList.toggle('on', SETTINGS.physics);
+    if (modelLoaded) reloadModel();   // recharge le bon fichier (sans relancer tout seul)
+  });
 
   // --- Réglages : Déplacement ---
   bindRange('moveRange','moveVal', v=>{ SETTINGS.moveSpeed = v; return v.toFixed(1); });
   bindRange('mouseRange','mouseVal', v=>{ SETTINGS.mouseSens = v; return v.toFixed(1); });
   bindRange('touchRange','touchVal', v=>{ SETTINGS.touchSens = v; SETTINGS.vrTurnSpeed = v*1.1; return v.toFixed(1); });
   bindRange('heightRange','heightVal', v=>{ SETTINGS.eyeHeight = v; applyEyeHeight(); return v.toFixed(2); });
+  bindRange('groundRange','groundVal', v=>{ GROUND_Y = v; applyGroundY(); return v.toFixed(2); });
 
   // --- Réglages : Graphismes ---
   document.querySelectorAll('#gfxSeg button').forEach(b=>{
@@ -689,7 +710,21 @@ window.addEventListener('DOMContentLoaded', ()=>{
 
   // Applique le préréglage par défaut
   applyGraphics('medium');
+  applyGroundY();
+  applySky();
 });
+
+/* Hauteur de la plaque de sol grise */
+function applyGroundY(){
+  const g = document.getElementById('ground');
+  if (g) g.setAttribute('position', {x:0, y:GROUND_Y, z:0});
+}
+/* Fond 360° (image equirectangulaire) ou couleur noire par défaut */
+function applySky(){
+  const sky = document.getElementById('sky');
+  if (!sky) return;
+  if (SKY_IMAGE){ sky.setAttribute('src', SKY_IMAGE); sky.removeAttribute('color'); }
+}
 
 /* ----- Helpers UI ----- */
 function bindRange(id, valId, fn){
@@ -719,8 +754,17 @@ function onPlay(){
   if (!loading) startLoading();                   // sinon -> chargement avec jauge
 }
 
-/* Charge scene.glb à la demande et met à jour la jauge (% + temps restant) */
-function startLoading(){
+/* Recharge le modèle (ex. quand on (dés)active la physique) sans relancer la lecture */
+function reloadModel(){
+  started = false; paused = false;
+  if (audioOk){ audioEl.pause(); audioEl.currentTime = 0; }
+  if (modelEntity.getObject3D('mesh')) modelEntity.removeObject3D('mesh');
+  modelLoaded = false; loading = false; stageObj = null;
+  startLoading(false);   // charge le bon fichier ; l'utilisateur relance avec PLAY
+}
+
+/* Charge le glb à la demande et met à jour la jauge (% + temps restant) */
+function startLoading(autoPlay = true){
   loading = true;
   const prog = document.getElementById('progress');
   const bar = document.getElementById('bar'), fill = document.getElementById('barFill');
@@ -735,7 +779,8 @@ function startLoading(){
   }
 
   const loader = new THREE.GLTFLoader();
-  loader.load('scene.glb',
+  const file = SETTINGS.physics ? 'scene_physics.glb' : 'scene.glb';
+  loader.load(file,
     // ---- succès ----
     (gltf)=>{
       const model = gltf.scene;
@@ -746,7 +791,7 @@ function startLoading(){
       prog.style.display = 'none';
       if (vrTxt) vrTxt.setAttribute('value','PLAY');
       precompile(model);   // évite le gel quand Luka apparaît
-      beginPlayback();
+      if (autoPlay) beginPlayback();
     },
     // ---- progression ----
     (xhr)=>{
@@ -775,11 +820,11 @@ function startLoading(){
       loading = false; prog.style.display = 'none';
       const detail = (err && (err.message || err.type)) ? ' (' + (err.message || err.type) + ')' : '';
       if (location.protocol === 'file:'){
-        showError("Chargement de scene.glb bloqué en local (file://). Sous Chrome, lance un serveur "
+        showError("Chargement de " + file + " bloqué en local (file://). Sous Chrome, lance un serveur "
                 + "local : ouvre un terminal dans le dossier, tape \"python -m http.server\", puis va sur "
                 + "http://localhost:8000. (Firefox accepte le local, pas Chrome.)");
       } else {
-        showError("Échec du chargement de scene.glb" + detail + " — vérifie que le fichier est à côté de index.html.");
+        showError("Échec du chargement de " + file + detail + " — vérifie que le fichier est à côté de index.html.");
       }
       if (vrTxt) vrTxt.setAttribute('value','ERREUR');
     }
