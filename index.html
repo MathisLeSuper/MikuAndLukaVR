@@ -131,6 +131,17 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
 #openMenuBtn{position:fixed;top:14px;right:14px;z-index:45;display:none;width:auto;padding:8px 12px;border-radius:10px;
   background:rgba(13,17,26,.7);border:1px solid var(--line);color:var(--cyan-soft);font-family:'Chakra Petch',sans-serif;
   font-size:12px;letter-spacing:.1em;cursor:pointer;}
+/* Barre de lecture façon YouTube */
+#seek{position:fixed;left:0;right:0;bottom:16px;z-index:46;display:none;align-items:center;gap:10px;
+  padding:0 18px;pointer-events:none;}
+#seek .seekTime{pointer-events:none;color:var(--cyan-soft);font-family:'Chakra Petch',sans-serif;font-size:12px;
+  min-width:42px;text-align:center;text-shadow:0 1px 3px #000;}
+.seekTrack{position:relative;flex:1;height:22px;display:flex;align-items:center;pointer-events:auto;cursor:pointer;touch-action:none;}
+.seekTrack::before{content:"";position:absolute;left:0;right:0;height:5px;border-radius:3px;background:rgba(255,255,255,.22);}
+.seekFill{position:absolute;left:0;height:5px;width:0;border-radius:3px;
+  background:linear-gradient(90deg,var(--cyan),var(--cyan-soft));box-shadow:0 0 10px rgba(54,214,231,.6);}
+.seekHandle{position:absolute;left:0;width:14px;height:14px;margin-left:-7px;border-radius:50%;
+  background:var(--cyan-soft);box-shadow:0 0 10px rgba(54,214,231,.8);}
 </style>
 </head>
 <body>
@@ -179,8 +190,8 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
       <div class="row"><span class="label">Physique (cheveux, vêtements)</span>
         <div class="switch on" id="physSwitch"><i></i></div></div>
       <div class="row"><span class="label">Hauteur du sol (m)</span>
-        <input type="range" id="groundRange" min="-0.5" max="0.3" step="0.01" value="-0.05" style="flex:1">
-        <span class="value" id="groundVal">-0.05</span></div>
+        <input type="range" id="groundRange" min="-1.0" max="0.3" step="0.01" value="-0.50" style="flex:1">
+        <span class="value" id="groundVal">-0.50</span></div>
 
       <!-- GRAPHISMES -->
       <div class="section-title">Graphismes</div>
@@ -225,6 +236,13 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
     <div class="tbtn" id="btnDown">DOWN</div>
     <div class="tbtn" id="btnJump">JUMP</div>
   </div>
+</div>
+
+<!-- Barre de lecture (style YouTube) : aller où on veut dans l'animation -->
+<div id="seek">
+  <span class="seekTime" id="seekCur">0:00</span>
+  <div class="seekTrack" id="seekTrack"><div class="seekFill" id="seekFill"></div><div class="seekHandle" id="seekHandle"></div></div>
+  <span class="seekTime" id="seekDur">0:00</span>
 </div>
 
 <!-- Élément audio HTML (synchronisé avec l'animation) -->
@@ -326,10 +344,10 @@ const STAGE_SCALE_FACTOR = 0.13;
 // === RÉGLAGES FACILES À MODIFIER ===
 // Hauteur de la plaque de sol (gris). Le décor du stage est un peu sous le disque central :
 // descends cette valeur (plus négative) jusqu'à ce que le sol du stage soit visible.
-let GROUND_Y = -0.20;
-// Fond 360° : mets le nom d'une image equirectangulaire (ex. 'sky.png') placée à côté de index.html.
+let GROUND_Y = -0.50;
+// Fond 360° : nom d'une image equirectangulaire placée à côté de index.html.
 // Laisse '' pour garder le fond noir.
-const SKY_IMAGE = '';
+const SKY_IMAGE = 'backround1.png';
 
 // Vecteurs/états d'entrée alimentés par clavier, tactile et VR
 const Input = {
@@ -359,6 +377,8 @@ function applyVisibility(nodes, tt){
 let started = false;        // PLAY a été pressé
 let paused = false;         // animation/musique en pause
 let stageObj = null;        // décor (cible des collisions)
+let mmdSync = null;         // composant mmd-sync (pour le seek)
+let seeking = false;        // on est en train de déplacer la barre de lecture
 let audioOk = true;         // music.mp3 chargé ?
 let modelLoaded = false;    // scene.glb chargé ?
 let loading = false;        // chargement en cours ?
@@ -403,6 +423,7 @@ function controlsText(){
 AFRAME.registerComponent('mmd-sync', {
   init(){
     this.mixer = null; this.actions = []; this.maxDur = 0; this.visNodes = {};
+    mmdSync = this;
     this.el.addEventListener('model-loaded', (e)=>{
       const model = e.detail.model;
       const clips = model.animations || [];
@@ -451,15 +472,18 @@ AFRAME.registerComponent('mmd-sync', {
   },
   tick(time, dt){
     if (!this.mixer || !started || paused) return;
+    let t;
     if (audioOk && audioEl && !audioEl.paused){
-      // L'animation suit l'horloge audio => synchro parfaite (avec boucle)
-      this.mixer.setTime(audioEl.currentTime % (this.maxDur || 1));
+      t = audioEl.currentTime;                 // l'audio est l'horloge maître
     } else {
-      // Repli : horloge interne si l'audio est indisponible
-      this.mixer.update((dt || 16) / 1000);
+      t = this.mixer.time + (dt || 16) / 1000; // repli : horloge interne
     }
-    // Visibilité show/hide synchronisée sur le temps courant
-    applyVisibility(this.visNodes, this.mixer.time % (this.maxDur || 1));
+    // L'animation (~3 min 30) est plus courte que la musique (~5 min 30) :
+    // on la FIGE sur sa dernière image au lieu de la relancer.
+    const at = Math.min(t, (this.maxDur || 1) - 0.001);
+    this.mixer.setTime(at);
+    applyVisibility(this.visNodes, at);
+    if (!seeking) updateSeekUI(t, seekDuration());
   }
 });
 
@@ -620,10 +644,12 @@ AFRAME.registerComponent('vr-bridge', {
       // le casque pilote le regard : on remet le tangage local à zéro
       const camO = document.getElementById('camera').object3D; camO.rotation.set(0,0,0);
       if (!started) document.getElementById('vrMenu').setAttribute('visible', true);
+      updateSeekVisible();
     });
     this.el.addEventListener('exit-vr', ()=>{
       document.getElementById('overlay').style.display = '';
       if (isTouch && started) document.getElementById('touch').style.display = 'block';
+      updateSeekVisible();
     });
   }
 });
@@ -705,6 +731,9 @@ window.addEventListener('DOMContentLoaded', ()=>{
   // --- Tactile (mobile) : joysticks + boutons ---
   setupTouch();
 
+  // --- Barre de lecture (seek) ---
+  setupSeek();
+
   // --- Menu VR in-world ---
   setupVrMenu();
 
@@ -782,7 +811,7 @@ function startLoading(autoPlay = true){
   const file = SETTINGS.physics ? 'scene_physics.glb' : 'scene.glb';
   loader.load(file,
     // ---- succès ----
-    (gltf)=>{
+    async (gltf)=>{
       const model = gltf.scene;
       model.animations = gltf.animations || []; // mmd-sync lit model.animations
       modelEntity.setObject3D('mesh', model);
@@ -790,7 +819,7 @@ function startLoading(autoPlay = true){
       modelLoaded = true; loading = false;
       prog.style.display = 'none';
       if (vrTxt) vrTxt.setAttribute('value','PLAY');
-      precompile(model);   // évite le gel quand Luka apparaît
+      await precompile(model);   // compile les shaders en tâche de fond (évite le gel)
       if (autoPlay) beginPlayback();
     },
     // ---- progression ----
@@ -831,9 +860,10 @@ function startLoading(autoPlay = true){
   );
 }
 
-/* Précompile les shaders + force l'upload GPU des 2 persos (Luka cachée au début,
-   sinon ses matériaux se compilent quand elle apparaît -> gel de ~5 s). */
-function precompile(model){
+/* Précompile les shaders des 2 persos pour éviter le gel quand Luka apparaît.
+   IMPORTANT : compilation ASYNCHRONE (compileAsync) sinon Chrome bloge l'onglet
+   plusieurs minutes ("la page ne répond pas") sur ces shaders skinning+morphs. */
+async function precompile(model){
   try{
     const r = sceneEl.renderer, cam = sceneEl.camera;
     if (!r) return;
@@ -841,8 +871,8 @@ function precompile(model){
     const saved = roots.map(o=>o.visible);
     roots.forEach(o=>o.visible = true);
     model.updateMatrixWorld(true);
-    if (r.compile) r.compile(sceneEl.object3D, cam);
-    r.render(sceneEl.object3D, cam);   // force l'upload des géométries/matériaux
+    if (r.compileAsync){ await r.compileAsync(sceneEl.object3D, cam); }   // non bloquant
+    else if (r.compile){ r.compile(sceneEl.object3D, cam); }             // fallback
     roots.forEach((o,i)=>o.visible = saved[i]);
   }catch(e){ console.warn('precompile ignoré', e); }
 }
@@ -859,6 +889,7 @@ function beginPlayback(){
   }
   if (isTouch && !sceneEl.is('vr-mode')) document.getElementById('touch').style.display = 'block';
   if (!isTouch && !sceneEl.is('vr-mode')) requestLock();
+  updateSeekVisible();
 }
 function openMenuMidGame(){ pauseGame(); }
 
@@ -878,6 +909,7 @@ function pauseGame(){
   document.getElementById('touch').style.display = 'none';
   if (document.pointerLockElement) document.exitPointerLock();
   if (sceneEl.is('vr-mode')) document.getElementById('vrMenu').setAttribute('visible', true);
+  updateSeekVisible();
 }
 function resumeGame(){
   if (!paused) return;
@@ -889,6 +921,7 @@ function resumeGame(){
   if (audioOk) audioEl.play().catch(()=>{});
   if (isTouch && !sceneEl.is('vr-mode')) document.getElementById('touch').style.display = 'block';
   if (!isTouch && !sceneEl.is('vr-mode')) requestLock();
+  updateSeekVisible();
 }
 
 /* =================================================================
@@ -954,7 +987,7 @@ function setupTouch(){
     for (const id in active) if (active[id].zone === zone) return;
     const el = zone==='L' ? djL : djR, knob = zone==='L' ? knobL : knobR;
     el.style.left = t.clientX+'px'; el.style.top = t.clientY+'px'; el.style.display = 'block';
-    knob.style.transform = 'translate(-50%,-50%)';
+    knob.style.transform = 'translate(0,0)';
     active[t.identifier] = { zone, ox:t.clientX, oy:t.clientY, knob };
   }
   function moveTouch(t){
@@ -962,7 +995,7 @@ function setupTouch(){
     let dx = t.clientX-a.ox, dy = t.clientY-a.oy;
     const len = Math.hypot(dx,dy), cl = Math.min(len, R);
     const nx = len ? dx/len : 0, ny = len ? dy/len : 0;
-    a.knob.style.transform = `translate(calc(-50% + ${nx*cl}px), calc(-50% + ${ny*cl}px))`;
+    a.knob.style.transform = `translate(${nx*cl}px, ${ny*cl}px)`;
     const vx = nx*cl/R, vy = ny*cl/R;     // -1..1 ; vy>0 = doigt vers le bas
     if (a.zone==='L'){ Input.move.x = vx; Input.move.y = vy; }   // haut = avancer
     else            { Input.lookAxis.x = vx; Input.lookAxis.y = vy; } // regard (Y inversé voulu)
@@ -996,6 +1029,53 @@ function holdBtn(id, cb){
   b.addEventListener('touchstart', on, {passive:false});
   b.addEventListener('touchend', off, {passive:false});
   b.addEventListener('touchcancel', off, {passive:false});
+}
+
+/* =================================================================
+   BARRE DE LECTURE (seek) façon YouTube
+   ================================================================= */
+function seekDuration(){
+  if (audioOk && audioEl && isFinite(audioEl.duration) && audioEl.duration > 0) return audioEl.duration;
+  return (mmdSync && mmdSync.maxDur) ? mmdSync.maxDur : 1;
+}
+function fmtTime(s){ s = Math.max(0, Math.floor(s||0)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
+function updateSeekUI(cur, dur){
+  dur = dur || 1; cur = Math.max(0, Math.min(cur, dur));
+  const f = (cur/dur)*100;
+  const fill = document.getElementById('seekFill'), h = document.getElementById('seekHandle');
+  if (fill) fill.style.width = f+'%';
+  if (h) h.style.left = f+'%';
+  const c = document.getElementById('seekCur'), d = document.getElementById('seekDur');
+  if (c) c.textContent = fmtTime(cur);
+  if (d) d.textContent = fmtTime(dur);
+}
+function seekToFraction(frac){
+  const dur = seekDuration();
+  const t = Math.max(0, Math.min(1, frac)) * dur;
+  if (audioOk && audioEl) audioEl.currentTime = t;
+  if (mmdSync && mmdSync.mixer){           // met à jour l'image tout de suite (même en pause)
+    const at = Math.min(t, (mmdSync.maxDur||1)-0.001);
+    mmdSync.mixer.setTime(at); applyVisibility(mmdSync.visNodes, at);
+  }
+  updateSeekUI(t, dur);
+}
+function setupSeek(){
+  const track = document.getElementById('seekTrack');
+  const fracX = (x)=>{ const r = track.getBoundingClientRect(); return (x - r.left) / r.width; };
+  const start = (x)=>{ seeking = true; seekToFraction(fracX(x)); };
+  const move  = (x)=>{ if (seeking) seekToFraction(fracX(x)); };
+  const end   = ()=>{ seeking = false; };
+  track.addEventListener('mousedown', (e)=>{ e.preventDefault(); start(e.clientX);
+    const mm=(ev)=>move(ev.clientX), mu=()=>{ end(); window.removeEventListener('mousemove',mm); window.removeEventListener('mouseup',mu); };
+    window.addEventListener('mousemove', mm); window.addEventListener('mouseup', mu); });
+  track.addEventListener('touchstart', (e)=>{ e.preventDefault(); e.stopPropagation(); start(e.changedTouches[0].clientX); }, {passive:false});
+  track.addEventListener('touchmove',  (e)=>{ e.preventDefault(); e.stopPropagation(); move(e.changedTouches[0].clientX); }, {passive:false});
+  track.addEventListener('touchend',   (e)=>{ e.stopPropagation(); end(); });
+  track.addEventListener('touchcancel',(e)=>{ end(); });
+}
+function updateSeekVisible(){
+  const el = document.getElementById('seek');
+  if (el) el.style.display = (started && !paused && !sceneEl.is('vr-mode')) ? 'flex' : 'none';
 }
 
 /* =================================================================
