@@ -80,6 +80,9 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
 .switch.on{background:rgba(54,214,231,.3);}
 .switch i{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:var(--cyan-soft);transition:left .18s;}
 .switch.on i{left:24px;}
+.swatches{display:flex;gap:8px;flex-wrap:wrap;}
+.swatch{width:24px;height:24px;border-radius:50%;cursor:pointer;border:2px solid transparent;box-shadow:0 0 6px rgba(0,0,0,.4);}
+.swatch.on{border-color:#fff;transform:scale(1.12);}
 
 .controls-box{font-size:12.5px;line-height:1.7;color:var(--muted);background:rgba(0,0,0,.25);
   border:1px solid var(--line);border-radius:10px;padding:10px 12px;max-height:34vh;overflow:auto;}
@@ -183,8 +186,8 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
         <input type="range" id="touchRange" min="0.5" max="5" step="0.1" value="2" style="flex:1">
         <span class="value" id="touchVal">2.0</span></div>
       <div class="row"><span class="label">Ta taille (m)</span>
-        <input type="range" id="heightRange" min="1.2" max="2.0" step="0.01" value="1.60" style="flex:1">
-        <span class="value" id="heightVal">1.60</span></div>
+        <input type="range" id="heightRange" min="1.0" max="2.0" step="0.01" value="1.52" style="flex:1">
+        <span class="value" id="heightVal">1.52</span></div>
       <div class="row"><span class="label">Collisions avec le décor</span>
         <div class="switch" id="collideSwitch"><i></i></div></div>
       <div class="row"><span class="label">Physique (cheveux, vêtements)</span>
@@ -192,6 +195,10 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
       <div class="row"><span class="label">Hauteur du sol (m)</span>
         <input type="range" id="groundRange" min="-1.0" max="0.3" step="0.01" value="-0.50" style="flex:1">
         <span class="value" id="groundVal">-0.50</span></div>
+      <div class="row"><span class="label">Bâtons lumineux (VR)</span>
+        <div class="switch" id="glowSwitch"><i></i></div></div>
+      <div class="row"><span class="label">Couleur des bâtons</span>
+        <div class="swatches" id="glowSwatches"></div></div>
 
       <!-- GRAPHISMES -->
       <div class="section-title">Graphismes</div>
@@ -281,29 +288,30 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
   <a-entity id="rig" position="0 0 4.5" rig-controls>
     <a-entity id="camera" camera position="0 1.6 0" look-vr>
       <!-- Menu in-world (VR) : suit le regard car parenté à la caméra -->
-      <a-entity id="vrMenu" position="0 0 -1.5" visible="false">
-        <a-plane width="1.5" height="1.45" color="#0d111a" opacity="0.92"
+      <a-entity id="vrMenu" position="0 0 -1.6" visible="false">
+        <a-plane width="2.5" height="2.05" color="#0d111a" opacity="0.93"
                  material="side: double" class="vrpanel"></a-plane>
-        <a-text value="MMD VR" align="center" position="0 0.56 0.01" width="2.2"
-                color="#7fe9f3"></a-text>
-        <a-plane class="clickable vrbtn" id="vrPlay" width="1.0" height="0.18" position="0 0.30 0.01"
+        <a-text value="MMD VR — Réglages" align="center" position="0 0.88 0.01" width="2.6" color="#7fe9f3"></a-text>
+        <!-- Colonne gauche -->
+        <a-plane class="clickable vrbtn" id="vrPlay" width="1.0" height="0.17" position="-0.62 0.62 0.01"
                  color="#16586a" opacity="0.95"></a-plane>
-        <a-text id="vrPlayTxt" value="PLAY" align="center" position="0 0.30 0.02" width="2.4" color="#eaf6f8"></a-text>
-        <a-plane class="clickable vrbtn" id="vrGfx" width="1.0" height="0.16" position="0 0.06 0.01"
+        <a-text id="vrPlayTxt" value="PLAY" align="center" position="-0.62 0.62 0.02" width="2.4" color="#eaf6f8"></a-text>
+        <a-plane class="clickable vrbtn" id="vrGfx" width="1.0" height="0.15" position="-0.62 0.40 0.01"
                  color="#15212e" opacity="0.95"></a-plane>
-        <a-text id="vrGfxTxt" value="Graphismes : MEDIUM" align="center" position="0 0.06 0.02" width="2.2" color="#9fb4c4"></a-text>
-        <a-plane class="clickable vrbtn" id="vrMute" width="1.0" height="0.16" position="0 -0.18 0.01"
+        <a-text id="vrGfxTxt" value="Graphismes : MEDIUM" align="center" position="-0.62 0.40 0.02" width="2.0" color="#9fb4c4"></a-text>
+        <a-plane class="clickable vrbtn" id="vrMute" width="1.0" height="0.15" position="-0.62 0.20 0.01"
                  color="#15212e" opacity="0.95"></a-plane>
-        <a-text id="vrMuteTxt" value="Son : ON" align="center" position="0 -0.18 0.02" width="2.2" color="#9fb4c4"></a-text>
-        <!-- Barre de navigation (seek) : clique dessus pour aller à ce moment -->
-        <a-text value="Aller à :" align="center" position="0 -0.40 0.02" width="2.0" color="#9fb4c4"></a-text>
-        <a-plane id="vrSeekTrackBg" width="1.1" height="0.05" position="0 -0.52 0.01" color="#243042" opacity="0.95"></a-plane>
-        <a-plane id="vrSeekFill" width="1.1" height="0.05" position="-0.55 -0.52 0.012" color="#36d6e7"
+        <a-text id="vrMuteTxt" value="Son : ON" align="center" position="-0.62 0.20 0.02" width="2.0" color="#9fb4c4"></a-text>
+        <!-- (les autres réglages sont ajoutés en JS dans setupVrMenu) -->
+        <!-- Barre de navigation (seek) en bas -->
+        <a-text value="Aller à :" align="center" position="0 -0.46 0.02" width="2.0" color="#9fb4c4"></a-text>
+        <a-plane id="vrSeekTrackBg" width="1.7" height="0.05" position="0 -0.58 0.01" color="#243042" opacity="0.95"></a-plane>
+        <a-plane id="vrSeekFill" width="1.7" height="0.05" position="-0.85 -0.58 0.012" color="#36d6e7"
                  material="shader: flat" scale="0.0001 1 1"></a-plane>
-        <a-plane class="clickable" id="vrSeekTrack" width="1.2" height="0.16" position="0 -0.52 0.02" opacity="0" material="transparent: true"></a-plane>
-        <a-text id="vrSeekTime" value="0:00 / 0:00" align="center" position="0 -0.62 0.02" width="1.8" color="#7fe9f3"></a-text>
+        <a-plane class="clickable" id="vrSeekTrack" width="1.8" height="0.16" position="0 -0.58 0.02" opacity="0" material="transparent: true"></a-plane>
+        <a-text id="vrSeekTime" value="0:00 / 0:00" align="center" position="0 -0.70 0.02" width="1.8" color="#7fe9f3"></a-text>
         <a-text value="Gâchette / pincement pour sélectionner"
-                align="center" position="0 -0.70 0.02" width="1.6" color="#5f7780"></a-text>
+                align="center" position="0 -0.90 0.02" width="1.8" color="#5f7780"></a-text>
       </a-entity>
     </a-entity>
 
@@ -313,14 +321,26 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
       hand-tracking-controls="hand: left; modelColor: #cfe9ee"
       raycaster="objects: .clickable; far: 6; lineColor: #36d6e7; showLine: true"
       cursor="fuse: false; downEvents: triggerdown, pinchstarted; upEvents: triggerup, pinchended"
-      vr-hand="hand: left"></a-entity>
+      vr-hand="hand: left">
+      <a-entity class="glowstick" visible="false">
+        <a-cylinder class="gs-mesh" height="0.28" radius="0.013" rotation="-90 0 0" position="0 0 -0.16"
+          material="shader: flat; color: #39c5bb"></a-cylinder>
+        <a-light class="gs-light" type="point" color="#39c5bb" intensity="0.5" distance="2.5" position="0 0 -0.30"></a-light>
+      </a-entity>
+    </a-entity>
 
     <a-entity id="rightHand"
       oculus-touch-controls="hand: right"
       hand-tracking-controls="hand: right; modelColor: #ffd1e8"
       raycaster="objects: .clickable; far: 6; lineColor: #36d6e7; showLine: true"
       cursor="fuse: false; downEvents: triggerdown, pinchstarted; upEvents: triggerup, pinchended"
-      vr-hand="hand: right"></a-entity>
+      vr-hand="hand: right">
+      <a-entity class="glowstick" visible="false">
+        <a-cylinder class="gs-mesh" height="0.28" radius="0.013" rotation="-90 0 0" position="0 0 -0.16"
+          material="shader: flat; color: #39c5bb"></a-cylinder>
+        <a-light class="gs-light" type="point" color="#39c5bb" intensity="0.5" distance="2.5" position="0 0 -0.30"></a-light>
+      </a-entity>
+    </a-entity>
   </a-entity>
 </a-scene>
 
@@ -339,9 +359,11 @@ const SETTINGS = {
   touchSens: 2.0,      // rotation joystick droit (mobile)
   vrTurnSpeed: 2.2,    // rotation joystick droit (VR)
   graphics: 'medium',
-  eyeHeight: 1.60,     // hauteur des yeux (PC/mobile) ; en VR c'est ta vraie taille
+  eyeHeight: 1.52,     // taille par défaut (tous appareils) ; en VR = décalage vertical
   collisions: false,   // collisions avec le décor (expérimental)
-  physics: true        // physique cheveux/vêtements (charge scene_physics.glb)
+  physics: true,       // physique cheveux/vêtements (charge scene_physics.glb)
+  glowSticks: false,   // bâtons lumineux dans les mains (VR)
+  glowColor: '#39c5bb' // couleur des bâtons (par défaut : turquoise Miku)
 };
 
 // Décor trop grand par rapport aux persos -> on le réduit (1/3 ≈ 3x plus petit).
@@ -355,6 +377,8 @@ let GROUND_Y = -0.50;
 // Fond 360° : nom d'une image equirectangulaire placée à côté de index.html.
 // Laisse '' pour garder le fond noir.
 const SKY_IMAGE = 'backround1.png';
+// Palette des bâtons lumineux (1re = turquoise Miku par défaut)
+const GLOW_COLORS = ['#39c5bb','#ff5fa2','#3b82f6','#39e639','#ff3b3b','#b86bff','#ff9f1c','#ffe14d','#ffffff'];
 
 // Vecteurs/états d'entrée alimentés par clavier, tactile et VR
 const Input = {
@@ -513,6 +537,7 @@ AFRAME.registerComponent('rig-controls', {
     this.cam = document.getElementById('camera').object3D;
     this.yaw = 0; this.pitch = 0;
     this.vy = 0; this.grounded = true;     // saut / gravité
+    this.baseY = 0;                         // hauteur "au sol" (avant décalage VR)
     this.flying = false;                    // mode vol
     this.lastJumpTime = 0;                  // pour détecter le double-appui
     this._fwd = new THREE.Vector3();
@@ -604,14 +629,17 @@ AFRAME.registerComponent('rig-controls', {
       let vy = 0;
       if (Input.jumpHeld || Input.up) vy += SETTINGS.flySpeed;
       if (Input.descendHeld)          vy -= SETTINGS.flySpeed;
-      this.rig.position.y += vy * d;
-      if (this.rig.position.y < gl) this.rig.position.y = gl;
+      this.baseY += vy * d;
+      if (this.baseY < gl) this.baseY = gl;
     } else {
       // Marche : gravité + saut, atterrissage sur le sol (gl)
       this.vy -= SETTINGS.gravity * d;
-      this.rig.position.y += this.vy * d;
-      if (this.rig.position.y <= gl){ this.rig.position.y = gl; this.vy = 0; this.grounded = true; }
+      this.baseY += this.vy * d;
+      if (this.baseY <= gl){ this.baseY = gl; this.vy = 0; this.grounded = true; }
     }
+    // En VR, la "Taille" agit comme une hauteur de vue (1.52 = neutre, sinon on monte/descend)
+    const vrOffset = sceneEl.is('vr-mode') ? (SETTINGS.eyeHeight - 1.52) : 0;
+    this.rig.position.y = this.baseY + vrOffset;
   }
 });
 
@@ -653,11 +681,13 @@ AFRAME.registerComponent('vr-bridge', {
       const camO = document.getElementById('camera').object3D; camO.rotation.set(0,0,0);
       if (!started) document.getElementById('vrMenu').setAttribute('visible', true);
       updateSeekVisible();
+      applyGlow();
     });
     this.el.addEventListener('exit-vr', ()=>{
       document.getElementById('overlay').style.display = '';
       if (isTouch && started) document.getElementById('touch').style.display = 'block';
       updateSeekVisible();
+      applyGlow();
     });
   }
 });
@@ -713,6 +743,25 @@ window.addEventListener('DOMContentLoaded', ()=>{
     physSwitch.classList.toggle('on', SETTINGS.physics);
     if (modelLoaded) reloadModel();   // recharge le bon fichier (sans relancer tout seul)
   });
+  // Bâtons lumineux : on/off + palette de couleurs
+  const glowSwitch = document.getElementById('glowSwitch');
+  glowSwitch.addEventListener('click', ()=>{
+    SETTINGS.glowSticks = !SETTINGS.glowSticks;
+    glowSwitch.classList.toggle('on', SETTINGS.glowSticks);
+    applyGlow();
+  });
+  const swWrap = document.getElementById('glowSwatches');
+  GLOW_COLORS.forEach(col=>{
+    const s = document.createElement('div');
+    s.className = 'swatch' + (col===SETTINGS.glowColor ? ' on' : '');
+    s.style.background = col; s.title = col;
+    s.addEventListener('click', ()=>{
+      SETTINGS.glowColor = col; applyGlow();
+      swWrap.querySelectorAll('.swatch').forEach(x=>x.classList.toggle('on', x===s));
+      syncVrGlow();
+    });
+    swWrap.appendChild(s);
+  });
 
   // --- Réglages : Déplacement ---
   bindRange('moveRange','moveVal', v=>{ SETTINGS.moveSpeed = v; return v.toFixed(1); });
@@ -749,6 +798,7 @@ window.addEventListener('DOMContentLoaded', ()=>{
   applyGraphics('medium');
   applyGroundY();
   applySky();
+  applyGlow();
 });
 
 /* Hauteur de la plaque de sol grise */
@@ -761,9 +811,16 @@ function applySky(){
   const sky = document.getElementById('sky');
   if (!sky || !SKY_IMAGE) return;
   const img = new Image();
-  img.onload = ()=> sky.setAttribute('src', SKY_IMAGE); // n'applique qu'une fois chargée
+  img.onload = ()=>{ sky.setAttribute('color', '#ffffff'); sky.setAttribute('src', SKY_IMAGE); }; // blanc = pas d'assombrissement
   img.onerror = ()=> console.warn('Image 360 introuvable : ' + SKY_IMAGE + ' (fond noir conservé)');
   img.src = SKY_IMAGE;
+}
+/* Bâtons lumineux dans les mains (VR uniquement) : couleur + on/off */
+function applyGlow(){
+  const on = SETTINGS.glowSticks && sceneEl && sceneEl.is('vr-mode');
+  document.querySelectorAll('.glowstick').forEach(g=> g.setAttribute('visible', !!on));
+  document.querySelectorAll('.gs-mesh').forEach(m=> m.setAttribute('material', 'shader: flat; color: ' + SETTINGS.glowColor));
+  document.querySelectorAll('.gs-light').forEach(l=> l.setAttribute('light', 'type: point; color: ' + SETTINGS.glowColor + '; intensity: 0.6; distance: 2.5'));
 }
 
 /* ----- Helpers UI ----- */
@@ -1146,11 +1203,83 @@ function setupVrMenu(){
   vrTrack.addEventListener('click', (e)=>{
     const p = e.detail && e.detail.intersection && e.detail.intersection.point;
     if (!p) return;
-    const local = vrTrack.object3D.worldToLocal(p.clone()); // largeur 1.2 -> [-0.6, 0.6]
-    seekToFraction((local.x + 0.6) / 1.2);
+    const local = vrTrack.object3D.worldToLocal(p.clone()); // largeur 1.8 -> [-0.9, 0.9]
+    seekToFraction((local.x + 0.9) / 1.8);
+  });
+
+  // ----- Réglages supplémentaires ajoutés en JS -----
+  const menu = document.getElementById('vrMenu');
+
+  // Colonne gauche : Physique + Bâtons (interrupteurs)
+  vrToggle(menu, -0.62, 0.02, 'Physique',
+    ()=>SETTINGS.physics,
+    (v)=>{ SETTINGS.physics=v; document.getElementById('physSwitch').classList.toggle('on',v); if(modelLoaded) reloadModel(); });
+  vrToggle(menu, -0.62, -0.16, 'Bâtons',
+    ()=>SETTINGS.glowSticks,
+    (v)=>{ SETTINGS.glowSticks=v; document.getElementById('glowSwitch').classList.toggle('on',v); applyGlow(); });
+
+  // Colonne droite : Rotation, Taille, Hauteur sol (incréments)
+  vrStepper(menu, 0.62, 0.62, 'Rotation',
+    ()=>SETTINGS.vrTurnSpeed, (v)=>{ SETTINGS.vrTurnSpeed=v; }, 0.3, 0.5, 5, (v)=>v.toFixed(1));
+  vrStepper(menu, 0.62, 0.40, 'Taille',
+    ()=>SETTINGS.eyeHeight, (v)=>{ SETTINGS.eyeHeight=v; applyEyeHeight(); syncRange('heightRange','heightVal',v,2); }, 0.02, 1.0, 2.0, (v)=>v.toFixed(2)+'m');
+  vrStepper(menu, 0.62, 0.18, 'Sol',
+    ()=>GROUND_Y, (v)=>{ GROUND_Y=v; applyGroundY(); syncRange('groundRange','groundVal',v,2); }, 0.05, -1.0, 0.3, (v)=>v.toFixed(2));
+
+  // Couleur des bâtons (pastilles)
+  vrText(menu, 0.62, -0.04, 'Couleur bâtons :');
+  GLOW_COLORS.forEach((c,i)=>{
+    const sx = 0.62 + (i-(GLOW_COLORS.length-1)/2)*0.105;
+    const p = document.createElement('a-plane');
+    p.setAttribute('class','clickable'); p.setAttribute('width',0.085); p.setAttribute('height',0.085);
+    p.setAttribute('position', sx+' -0.18 0.02'); p.setAttribute('material','shader: flat; color: '+c);
+    p.addEventListener('click', ()=>{ SETTINGS.glowColor=c; applyGlow(); syncGlowSwatches(); });
+    menu.appendChild(p);
   });
 }
-const VR_SEEK_W = 1.1; // largeur de la barre VR (vrSeekFill)
+/* Helpers de construction d'UI VR */
+function vrText(parent, x, y, value){
+  const t = document.createElement('a-text');
+  t.setAttribute('value', value); t.setAttribute('align','center');
+  t.setAttribute('position', x+' '+y+' 0.02'); t.setAttribute('width', 1.7); t.setAttribute('color','#9fb4c4');
+  parent.appendChild(t); return t;
+}
+function vrBtn(parent, x, y, w, h, color, label){
+  const p = document.createElement('a-plane');
+  p.setAttribute('class','clickable'); p.setAttribute('width', w); p.setAttribute('height', h);
+  p.setAttribute('position', x+' '+y+' 0.01'); p.setAttribute('color', color); p.setAttribute('opacity', 0.95);
+  const t = document.createElement('a-text');
+  t.setAttribute('value', label); t.setAttribute('align','center');
+  t.setAttribute('position','0 0 0.02'); t.setAttribute('width', 1.9); t.setAttribute('color','#eaf6f8');
+  p.appendChild(t); parent.appendChild(p); p._txt = t; return p;
+}
+function vrToggle(parent, x, y, label, get, set){
+  const p = vrBtn(parent, x, y, 1.0, 0.15, '#15212e', label+' : '+(get()?'ON':'OFF'));
+  p.addEventListener('click', ()=>{ set(!get()); p._txt.setAttribute('value', label+' : '+(get()?'ON':'OFF')); });
+  return p;
+}
+function vrStepper(parent, x, y, label, get, set, step, min, max, fmt){
+  const minus = vrBtn(parent, x-0.42, y, 0.14, 0.15, '#15212e', '−');
+  const plus  = vrBtn(parent, x+0.42, y, 0.14, 0.15, '#15212e', '+');
+  const val   = vrText(parent, x, y, label+' : '+fmt(get()));
+  const upd = ()=> val.setAttribute('value', label+' : '+fmt(get()));
+  minus.addEventListener('click', ()=>{ set(Math.max(min, Math.min(max, get()-step))); upd(); });
+  plus.addEventListener('click',  ()=>{ set(Math.max(min, Math.min(max, get()+step))); upd(); });
+}
+/* Synchronise un curseur 2D quand on change la valeur en VR */
+function syncRange(id, valId, v, dec){
+  const r = document.getElementById(id), o = document.getElementById(valId);
+  if (r) r.value = v; if (o) o.textContent = v.toFixed(dec);
+}
+function syncGlowSwatches(){
+  document.querySelectorAll('#glowSwatches .swatch').forEach(s=> s.classList.toggle('on', s.style.background && rgbToHex(s.style.background)===SETTINGS.glowColor));
+}
+function rgbToHex(rgb){
+  const m = rgb.match(/\d+/g); if(!m) return rgb;
+  return '#'+m.slice(0,3).map(n=>(+n).toString(16).padStart(2,'0')).join('');
+}
+function syncVrGlow(){ /* maj éventuelle des pastilles VR (pas d'état visuel pour l'instant) */ }
+const VR_SEEK_W = 1.7; // largeur de la barre VR (vrSeekFill)
 function updateVrSeek(cur, dur){
   const frac = Math.max(0, Math.min(1, cur/(dur||1)));
   const fill = document.getElementById('vrSeekFill');
