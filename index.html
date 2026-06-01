@@ -282,21 +282,28 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
     <a-entity id="camera" camera position="0 1.6 0" look-vr>
       <!-- Menu in-world (VR) : suit le regard car parenté à la caméra -->
       <a-entity id="vrMenu" position="0 0 -1.5" visible="false">
-        <a-plane width="1.5" height="1.05" color="#0d111a" opacity="0.92"
+        <a-plane width="1.5" height="1.45" color="#0d111a" opacity="0.92"
                  material="side: double" class="vrpanel"></a-plane>
-        <a-text value="MMD VR" align="center" position="0 0.36 0.01" width="2.2"
+        <a-text value="MMD VR" align="center" position="0 0.56 0.01" width="2.2"
                 color="#7fe9f3"></a-text>
-        <a-plane class="clickable vrbtn" id="vrPlay" width="1.0" height="0.18" position="0 0.08 0.01"
+        <a-plane class="clickable vrbtn" id="vrPlay" width="1.0" height="0.18" position="0 0.30 0.01"
                  color="#16586a" opacity="0.95"></a-plane>
-        <a-text id="vrPlayTxt" value="PLAY" align="center" position="0 0.08 0.02" width="2.4" color="#eaf6f8"></a-text>
-        <a-plane class="clickable vrbtn" id="vrGfx" width="1.0" height="0.16" position="0 -0.16 0.01"
+        <a-text id="vrPlayTxt" value="PLAY" align="center" position="0 0.30 0.02" width="2.4" color="#eaf6f8"></a-text>
+        <a-plane class="clickable vrbtn" id="vrGfx" width="1.0" height="0.16" position="0 0.06 0.01"
                  color="#15212e" opacity="0.95"></a-plane>
-        <a-text id="vrGfxTxt" value="Graphismes : MEDIUM" align="center" position="0 -0.16 0.02" width="2.2" color="#9fb4c4"></a-text>
-        <a-plane class="clickable vrbtn" id="vrMute" width="1.0" height="0.16" position="0 -0.36 0.01"
+        <a-text id="vrGfxTxt" value="Graphismes : MEDIUM" align="center" position="0 0.06 0.02" width="2.2" color="#9fb4c4"></a-text>
+        <a-plane class="clickable vrbtn" id="vrMute" width="1.0" height="0.16" position="0 -0.18 0.01"
                  color="#15212e" opacity="0.95"></a-plane>
-        <a-text id="vrMuteTxt" value="Son : ON" align="center" position="0 -0.36 0.02" width="2.2" color="#9fb4c4"></a-text>
+        <a-text id="vrMuteTxt" value="Son : ON" align="center" position="0 -0.18 0.02" width="2.2" color="#9fb4c4"></a-text>
+        <!-- Barre de navigation (seek) : clique dessus pour aller à ce moment -->
+        <a-text value="Aller à :" align="center" position="0 -0.40 0.02" width="2.0" color="#9fb4c4"></a-text>
+        <a-plane id="vrSeekTrackBg" width="1.1" height="0.05" position="0 -0.52 0.01" color="#243042" opacity="0.95"></a-plane>
+        <a-plane id="vrSeekFill" width="1.1" height="0.05" position="-0.55 -0.52 0.012" color="#36d6e7"
+                 material="shader: flat" scale="0.0001 1 1"></a-plane>
+        <a-plane class="clickable" id="vrSeekTrack" width="1.2" height="0.16" position="0 -0.52 0.02" opacity="0" material="transparent: true"></a-plane>
+        <a-text id="vrSeekTime" value="0:00 / 0:00" align="center" position="0 -0.62 0.02" width="1.8" color="#7fe9f3"></a-text>
         <a-text value="Gâchette / pincement pour sélectionner"
-                align="center" position="0 -0.46 0.02" width="1.6" color="#5f7780"></a-text>
+                align="center" position="0 -0.70 0.02" width="1.6" color="#5f7780"></a-text>
       </a-entity>
     </a-entity>
 
@@ -404,10 +411,11 @@ function controlsText(){
     <b>Moitié droite</b> — pareil pour tourner la caméra (haut/bas inversés)<br>
     <b>JUMP</b> — 1 appui : sauter · 2 appuis rapides : voler (maintenir = monter)<br>
     <b>DOWN</b> — Descendre &nbsp; <b>UP</b> — Monter &nbsp; <b>RUN</b> — Courir<br>
-    <b>☰ MENU</b> — Pause`;
+    <b>Barre en bas</b> — glisse pour aller où tu veux dans l'animation &nbsp; <b>☰ MENU</b> — Pause`;
   // En VR le casque affiche aussi ces infos via le panneau in-world
   return `
     <b>Z Q S D</b> / <b>W A S D</b> — Déplacement<br>
+    <b>Flèches ← →</b> : ±5 s &nbsp; <b>↑ ↓</b> : ±10 s (barre de lecture)<br>
     <b>Espace</b> — 1 appui : sauter · 2 appuis rapides : voler (maintenir = monter)<br>
     <b>Ctrl gauche</b> — Descendre &nbsp; <b>Shift</b> — Courir<br>
     <b>Souris</b> — Rotation (clic pour verrouiller) &nbsp; <b>Échap</b> — Pause<br>
@@ -748,11 +756,14 @@ function applyGroundY(){
   const g = document.getElementById('ground');
   if (g) g.setAttribute('position', {x:0, y:GROUND_Y, z:0});
 }
-/* Fond 360° (image equirectangulaire) ou couleur noire par défaut */
+/* Fond 360° (image equirectangulaire) ; si l'image est absente, on garde le fond couleur */
 function applySky(){
   const sky = document.getElementById('sky');
-  if (!sky) return;
-  if (SKY_IMAGE){ sky.setAttribute('src', SKY_IMAGE); sky.removeAttribute('color'); }
+  if (!sky || !SKY_IMAGE) return;
+  const img = new Image();
+  img.onload = ()=> sky.setAttribute('src', SKY_IMAGE); // n'applique qu'une fois chargée
+  img.onerror = ()=> console.warn('Image 360 introuvable : ' + SKY_IMAGE + ' (fond noir conservé)');
+  img.src = SKY_IMAGE;
 }
 
 /* ----- Helpers UI ----- */
@@ -811,7 +822,7 @@ function startLoading(autoPlay = true){
   const file = SETTINGS.physics ? 'scene_physics.glb' : 'scene.glb';
   loader.load(file,
     // ---- succès ----
-    async (gltf)=>{
+    (gltf)=>{
       const model = gltf.scene;
       model.animations = gltf.animations || []; // mmd-sync lit model.animations
       modelEntity.setObject3D('mesh', model);
@@ -819,8 +830,8 @@ function startLoading(autoPlay = true){
       modelLoaded = true; loading = false;
       prog.style.display = 'none';
       if (vrTxt) vrTxt.setAttribute('value','PLAY');
-      await precompile(model);   // compile les shaders en tâche de fond (évite le gel)
-      if (autoPlay) beginPlayback();
+      if (autoPlay) beginPlayback();   // rend la scène + lance le son TOUT DE SUITE
+      precompile();                    // compile les shaders en tâche de fond (non bloquant)
     },
     // ---- progression ----
     (xhr)=>{
@@ -861,20 +872,13 @@ function startLoading(autoPlay = true){
 }
 
 /* Précompile les shaders des 2 persos pour éviter le gel quand Luka apparaît.
-   IMPORTANT : compilation ASYNCHRONE (compileAsync) sinon Chrome bloge l'onglet
-   plusieurs minutes ("la page ne répond pas") sur ces shaders skinning+morphs. */
-async function precompile(model){
+   compile() initialise TOUS les matériaux (même cachés), donc pas besoin de toucher
+   à la visibilité. Asynchrone et "fire-and-forget" : ne bloque pas et ne casse pas le rendu. */
+function precompile(){
   try{
-    const r = sceneEl.renderer, cam = sceneEl.camera;
-    if (!r) return;
-    const roots = ['MikuRoot','LukaRoot'].map(n=>model.getObjectByName(n)).filter(Boolean);
-    const saved = roots.map(o=>o.visible);
-    roots.forEach(o=>o.visible = true);
-    model.updateMatrixWorld(true);
-    if (r.compileAsync){ await r.compileAsync(sceneEl.object3D, cam); }   // non bloquant
-    else if (r.compile){ r.compile(sceneEl.object3D, cam); }             // fallback
-    roots.forEach((o,i)=>o.visible = saved[i]);
-  }catch(e){ console.warn('precompile ignoré', e); }
+    const r = sceneEl.renderer;
+    if (r && r.compileAsync) r.compileAsync(sceneEl.object3D, sceneEl.camera).catch(()=>{});
+  }catch(e){ /* sans gravité */ }
 }
 
 /* Lance réellement la lecture : musique + animation synchronisées depuis t=0 */
@@ -909,6 +913,8 @@ function pauseGame(){
   document.getElementById('touch').style.display = 'none';
   if (document.pointerLockElement) document.exitPointerLock();
   if (sceneEl.is('vr-mode')) document.getElementById('vrMenu').setAttribute('visible', true);
+  const cur = (audioOk && audioEl) ? audioEl.currentTime : (mmdSync && mmdSync.mixer ? mmdSync.mixer.time : 0);
+  updateSeekUI(cur, seekDuration());   // rafraîchit la barre (2D + VR)
   updateSeekVisible();
 }
 function resumeGame(){
@@ -930,10 +936,15 @@ function resumeGame(){
 function setKey(e, down){
   const k = e.key.toLowerCase();
   switch(k){
-    case 'z': case 'w': case 'arrowup':    keys.fwd = down; break;
-    case 's': case 'arrowdown':            keys.back = down; break;
-    case 'q': case 'a': case 'arrowleft':  keys.left = down; break;
-    case 'd': case 'arrowright':           keys.right = down; break;
+    case 'z': case 'w':  keys.fwd = down; break;
+    case 's':            keys.back = down; break;
+    case 'q': case 'a':  keys.left = down; break;
+    case 'd':            keys.right = down; break;
+    // Flèches = barre de lecture (← → : ±5 s, ↑ ↓ : ±10 s)
+    case 'arrowleft':  if (down) seekBy(-5);  e.preventDefault(); break;
+    case 'arrowright': if (down) seekBy(5);   e.preventDefault(); break;
+    case 'arrowup':    if (down) seekBy(10);  e.preventDefault(); break;
+    case 'arrowdown':  if (down) seekBy(-10); e.preventDefault(); break;
     case ' ':                              // Espace = saut (1 appui) / double-appui = vol
       if (down && !Input.jumpHeld) Input.jumpEdge = true;
       Input.jumpHeld = down; e.preventDefault(); break;
@@ -1048,6 +1059,7 @@ function updateSeekUI(cur, dur){
   const c = document.getElementById('seekCur'), d = document.getElementById('seekDur');
   if (c) c.textContent = fmtTime(cur);
   if (d) d.textContent = fmtTime(dur);
+  if (typeof updateVrSeek === 'function') updateVrSeek(cur, dur); // barre VR
 }
 function seekToFraction(frac){
   const dur = seekDuration();
@@ -1058,6 +1070,12 @@ function seekToFraction(frac){
     mmdSync.mixer.setTime(at); applyVisibility(mmdSync.visNodes, at);
   }
   updateSeekUI(t, dur);
+}
+/* Avance/recule de `delta` secondes (flèches clavier) */
+function seekBy(delta){
+  if (!started) return;
+  const cur = (audioOk && audioEl) ? audioEl.currentTime : (mmdSync && mmdSync.mixer ? mmdSync.mixer.time : 0);
+  seekToFraction((cur + delta) / seekDuration());
 }
 function setupSeek(){
   const track = document.getElementById('seekTrack');
@@ -1123,6 +1141,25 @@ function setupVrMenu(){
     document.getElementById('muteSwitch').classList.toggle('on', SETTINGS.muted);
     syncVrMute();
   });
+  // Barre de navigation VR : clique le long de la barre pour aller à ce moment
+  const vrTrack = document.getElementById('vrSeekTrack');
+  vrTrack.addEventListener('click', (e)=>{
+    const p = e.detail && e.detail.intersection && e.detail.intersection.point;
+    if (!p) return;
+    const local = vrTrack.object3D.worldToLocal(p.clone()); // largeur 1.2 -> [-0.6, 0.6]
+    seekToFraction((local.x + 0.6) / 1.2);
+  });
+}
+const VR_SEEK_W = 1.1; // largeur de la barre VR (vrSeekFill)
+function updateVrSeek(cur, dur){
+  const frac = Math.max(0, Math.min(1, cur/(dur||1)));
+  const fill = document.getElementById('vrSeekFill');
+  if (fill && fill.object3D){
+    fill.object3D.scale.x = Math.max(0.0001, frac);
+    fill.object3D.position.x = -VR_SEEK_W/2 + frac*VR_SEEK_W/2;
+  }
+  const txt = document.getElementById('vrSeekTime');
+  if (txt) txt.setAttribute('value', fmtTime(cur)+' / '+fmtTime(dur));
 }
 function syncVrMute(){ const t = document.getElementById('vrMuteTxt'); if (t) t.setAttribute('value','Son : '+(SETTINGS.muted?'OFF':'ON')); }
 </script>
