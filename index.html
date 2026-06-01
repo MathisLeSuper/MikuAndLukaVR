@@ -116,14 +116,14 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
   border:1px solid var(--line);display:none;cursor:pointer;z-index:60;}
 
 /* ====================== CONTRÔLES TACTILES (MOBILE) ====================== */
-#touch{position:fixed;inset:0;z-index:40;display:none;pointer-events:none;}
-.joy{position:absolute;bottom:24px;width:120px;height:120px;border-radius:50%;
-  background:rgba(255,255,255,.05);border:1px solid var(--line);pointer-events:auto;touch-action:none;}
-#joyL{left:22px;} #joyR{right:22px;}
-.joy .stick{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;
+#touch{position:fixed;inset:0;z-index:40;display:none;pointer-events:auto;touch-action:none;}
+/* Joysticks dynamiques : apparaissent là où on pose le doigt */
+.dynjoy{position:absolute;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;
+  background:rgba(255,255,255,.06);border:1px solid var(--line);display:none;pointer-events:none;}
+.dynjoy .dynstick{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;
   border-radius:50%;background:radial-gradient(circle at 40% 35%,var(--cyan-soft),var(--cyan));
   box-shadow:0 0 16px rgba(54,214,231,.5);}
-.tbtns{position:absolute;right:18px;bottom:156px;display:flex;flex-direction:column;gap:10px;pointer-events:none;}
+.tbtns{position:absolute;right:18px;bottom:156px;display:flex;flex-direction:column;gap:10px;pointer-events:none;z-index:42;}
 .tbtn{pointer-events:auto;width:62px;height:62px;border-radius:50%;border:1px solid var(--line-strong);
   background:rgba(13,17,26,.7);color:var(--cyan-soft);font-family:'Chakra Petch',sans-serif;font-size:11px;
   letter-spacing:.05em;touch-action:none;display:flex;align-items:center;justify-content:center;text-align:center;}
@@ -174,6 +174,8 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
       <div class="row"><span class="label">Ta taille (m)</span>
         <input type="range" id="heightRange" min="1.2" max="2.0" step="0.01" value="1.60" style="flex:1">
         <span class="value" id="heightVal">1.60</span></div>
+      <div class="row"><span class="label">Collisions avec le décor</span>
+        <div class="switch" id="collideSwitch"><i></i></div></div>
 
       <!-- GRAPHISMES -->
       <div class="section-title">Graphismes</div>
@@ -208,10 +210,10 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
   <div id="lockHint">Cliquez pour activer la souris (regard) — Échap pour libérer</div>
 </div>
 
-<!-- Joysticks + boutons tactiles (mobile) -->
+<!-- Joysticks dynamiques + boutons tactiles (mobile) -->
 <div id="touch">
-  <div class="joy" id="joyL"><div class="stick"></div></div>
-  <div class="joy" id="joyR"><div class="stick"></div></div>
+  <div class="dynjoy" id="djL"><div class="dynstick"></div></div>
+  <div class="dynjoy" id="djR"><div class="dynstick"></div></div>
   <div class="tbtns">
     <div class="tbtn" id="btnRun">RUN</div>
     <div class="tbtn" id="btnUp">UP</div>
@@ -245,9 +247,9 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
 
   <!-- Ciel + sol de référence (confort VR) -->
   <a-sky id="sky" color="#0a0c12"></a-sky>
-  <a-entity id="ground" geometry="primitive: plane; width: 300; height: 300"
-            rotation="-90 0 0" position="0 -0.12 0"
-            material="color: #161a23; metalness: 0; roughness: 1"></a-entity>
+  <a-entity id="ground" geometry="primitive: plane; width: 400; height: 400"
+            rotation="-90 0 0" position="0 -0.02 0"
+            material="color: #10131c; metalness: 0; roughness: 1"></a-entity>
 
   <!-- Modèle MMD : chargé dynamiquement au PLAY (voir startLoading) -->
   <a-entity id="mmd" position="0 0 0" mmd-sync></a-entity>
@@ -307,7 +309,8 @@ const SETTINGS = {
   touchSens: 2.0,      // rotation joystick droit (mobile)
   vrTurnSpeed: 2.2,    // rotation joystick droit (VR)
   graphics: 'medium',
-  eyeHeight: 1.60      // hauteur des yeux (PC/mobile) ; en VR c'est ta vraie taille
+  eyeHeight: 1.60,     // hauteur des yeux (PC/mobile) ; en VR c'est ta vraie taille
+  collisions: false    // collisions avec le décor (expérimental)
 };
 
 // Décor trop grand par rapport aux persos -> on le réduit (1/3 ≈ 3x plus petit).
@@ -341,6 +344,7 @@ function applyVisibility(nodes, tt){
 
 let started = false;        // PLAY a été pressé
 let paused = false;         // animation/musique en pause
+let stageObj = null;        // décor (cible des collisions)
 let audioOk = true;         // music.mp3 chargé ?
 let modelLoaded = false;    // scene.glb chargé ?
 let loading = false;        // chargement en cours ?
@@ -362,8 +366,8 @@ function deviceLabel(){
 /* Texte des commandes selon l'appareil */
 function controlsText(){
   if (isTouch) return `
-    <b>Joystick gauche</b> — Avancer / reculer / gauche / droite<br>
-    <b>Joystick droit</b> — Tourner la caméra<br>
+    <b>Moitié gauche de l'écran</b> — pose le doigt n'importe où : un joystick apparaît, glisse pour te déplacer<br>
+    <b>Moitié droite</b> — pareil pour tourner la caméra (haut/bas inversés)<br>
     <b>JUMP</b> — 1 appui : sauter · 2 appuis rapides : voler (maintenir = monter)<br>
     <b>DOWN</b> — Descendre &nbsp; <b>UP</b> — Monter &nbsp; <b>RUN</b> — Courir<br>
     <b>☰ MENU</b> — Pause`;
@@ -424,6 +428,7 @@ AFRAME.registerComponent('mmd-sync', {
         stage.scale.setScalar(s);
         stage.position.set(0, -floorNative * s, 0);
         stage.updateMatrixWorld(true);
+        stageObj = stage;   // cible pour les collisions
       }
 
       applyVisibility(this.visNodes, 0); // état initial (Luka cachée au début)
@@ -466,6 +471,10 @@ AFRAME.registerComponent('rig-controls', {
     this.lastJumpTime = 0;                  // pour détecter le double-appui
     this._fwd = new THREE.Vector3();
     this._right = new THREE.Vector3();
+    this.ray = new THREE.Raycaster();       // collisions décor
+    this._org = new THREE.Vector3();
+    this._dir = new THREE.Vector3();
+    this._down = new THREE.Vector3(0,-1,0);
   },
   tick(time, dt){
     if (!started || paused) return;         // figé quand en pause
@@ -505,8 +514,21 @@ AFRAME.registerComponent('rig-controls', {
     const run = (Input.run || keys.run) ? SETTINGS.runMultiplier : 1;
     const sp = SETTINGS.moveSpeed * run * d;
     // Convention unique : mz < 0 = avancer (vers le regard), mx > 0 = droite.
-    this.rig.position.x += (this._fwd.x * mz + this._right.x * mx) * sp;
-    this.rig.position.z += (this._fwd.z * mz + this._right.z * mx) * sp;
+    let dx = (this._fwd.x * mz + this._right.x * mx) * sp;
+    let dz = (this._fwd.z * mz + this._right.z * mx) * sp;
+    // Collisions horizontales : on stoppe avant un mur/objet du décor
+    if (SETTINGS.collisions && stageObj){
+      const dist = Math.hypot(dx, dz);
+      if (dist > 1e-5){
+        this._dir.set(dx, 0, dz).normalize();
+        this.ray.set(this._org.set(this.rig.position.x, this.rig.position.y + 0.9, this.rig.position.z), this._dir);
+        this.ray.far = dist + 0.35;
+        const hit = this.ray.intersectObject(stageObj, true)[0];
+        if (hit){ const allow = Math.max(0, hit.distance - 0.35); dx = this._dir.x * allow; dz = this._dir.z * allow; }
+      }
+    }
+    this.rig.position.x += dx;
+    this.rig.position.z += dz;
 
     /* ---------- SAUT / VOL (double-appui = (dés)activer le vol) ---------- */
     if (Input.jumpEdge){
@@ -522,18 +544,27 @@ AFRAME.registerComponent('rig-controls', {
     // Le bouton UP (mobile) monte directement et enclenche le vol
     if (Input.up && !this.flying){ this.flying = true; this.vy = 0; }
 
+    // Niveau du sol sous le joueur (0 par défaut, ou surface du décor si collisions)
+    let gl = 0;
+    if (SETTINGS.collisions && stageObj){
+      this.ray.set(this._org.set(this.rig.position.x, this.rig.position.y + 1.7, this.rig.position.z), this._down);
+      this.ray.far = 8;
+      const hit = this.ray.intersectObject(stageObj, true)[0];
+      if (hit) gl = hit.point.y;
+    }
+
     if (this.flying){
       // Vol : pas de gravité. Monter = saut maintenu ou UP ; descendre = Ctrl/X/DOWN
       let vy = 0;
       if (Input.jumpHeld || Input.up) vy += SETTINGS.flySpeed;
       if (Input.descendHeld)          vy -= SETTINGS.flySpeed;
       this.rig.position.y += vy * d;
-      if (this.rig.position.y < 0) this.rig.position.y = 0;
+      if (this.rig.position.y < gl) this.rig.position.y = gl;
     } else {
-      // Marche : gravité + saut
+      // Marche : gravité + saut, atterrissage sur le sol (gl)
       this.vy -= SETTINGS.gravity * d;
       this.rig.position.y += this.vy * d;
-      if (this.rig.position.y <= 0){ this.rig.position.y = 0; this.vy = 0; this.grounded = true; }
+      if (this.rig.position.y <= gl){ this.rig.position.y = gl; this.vy = 0; this.grounded = true; }
     }
   }
 });
@@ -623,6 +654,11 @@ window.addEventListener('DOMContentLoaded', ()=>{
     audioEl.volume = SETTINGS.muted ? 0 : SETTINGS.volume;
     syncVrMute();
   });
+  const collideSwitch = document.getElementById('collideSwitch');
+  collideSwitch.addEventListener('click', ()=>{
+    SETTINGS.collisions = !SETTINGS.collisions;
+    collideSwitch.classList.toggle('on', SETTINGS.collisions);
+  });
 
   // --- Réglages : Déplacement ---
   bindRange('moveRange','moveVal', v=>{ SETTINGS.moveSpeed = v; return v.toFixed(1); });
@@ -691,6 +727,12 @@ function startLoading(){
   const vrTxt = document.getElementById('vrPlayTxt'); // feedback dans le panneau VR
   prog.style.display = 'flex';
   const t0 = performance.now();
+  // Chrome bloque la lecture de fichiers locaux (file://) : prévenir l'utilisateur
+  if (location.protocol === 'file:'){
+    showError("Ouvert en local (file://). Chrome bloque le chargement des fichiers locaux : "
+            + "lance un petit serveur (ex. \"python -m http.server\" dans le dossier, puis "
+            + "ouvre http://localhost:8000) ou utilise Firefox.");
+  }
 
   const loader = new THREE.GLTFLoader();
   loader.load('scene.glb',
@@ -731,7 +773,14 @@ function startLoading(){
     // ---- erreur ----
     (err)=>{
       loading = false; prog.style.display = 'none';
-      showError("Échec du chargement de scene.glb (fichier introuvable ?)");
+      const detail = (err && (err.message || err.type)) ? ' (' + (err.message || err.type) + ')' : '';
+      if (location.protocol === 'file:'){
+        showError("Chargement de scene.glb bloqué en local (file://). Sous Chrome, lance un serveur "
+                + "local : ouvre un terminal dans le dossier, tape \"python -m http.server\", puis va sur "
+                + "http://localhost:8000. (Firefox accepte le local, pas Chrome.)");
+      } else {
+        showError("Échec du chargement de scene.glb" + detail + " — vérifie que le fichier est à côté de index.html.");
+      }
       if (vrTxt) vrTxt.setAttribute('value','ERREUR');
     }
   );
@@ -843,11 +892,48 @@ function setupMouseLook(){
 function requestLock(){ const c = sceneEl.canvas || document.querySelector('canvas'); if (c && c.requestPointerLock) c.requestPointerLock(); }
 
 /* =================================================================
-   TACTILE MOBILE : 2 joysticks + boutons
+   TACTILE MOBILE : joysticks dynamiques (style Roblox) + boutons
    ================================================================= */
 function setupTouch(){
-  makeJoystick('joyL', (x,y)=>{ Input.move.x = x; Input.move.y = -y; }); // haut = avancer
-  makeJoystick('joyR', (x,y)=>{ Input.lookAxis.x = x; Input.lookAxis.y = y; });
+  const layer = document.getElementById('touch');
+  const djL = document.getElementById('djL'), djR = document.getElementById('djR');
+  const knobL = djL.querySelector('.dynstick'), knobR = djR.querySelector('.dynstick');
+  const R = 56;                 // rayon max du joystick (px)
+  const active = {};            // identifier de touche -> état du joystick
+
+  function startTouch(t){
+    // Ne pas créer de joystick si on touche un bouton (JUMP/UP/DOWN/RUN/☰)
+    if (t.target.closest && (t.target.closest('.tbtn') || t.target.closest('#openMenuBtn'))) return;
+    const zone = (t.clientX < window.innerWidth/2) ? 'L' : 'R';
+    // un seul joystick par côté
+    for (const id in active) if (active[id].zone === zone) return;
+    const el = zone==='L' ? djL : djR, knob = zone==='L' ? knobL : knobR;
+    el.style.left = t.clientX+'px'; el.style.top = t.clientY+'px'; el.style.display = 'block';
+    knob.style.transform = 'translate(-50%,-50%)';
+    active[t.identifier] = { zone, ox:t.clientX, oy:t.clientY, knob };
+  }
+  function moveTouch(t){
+    const a = active[t.identifier]; if (!a) return;
+    let dx = t.clientX-a.ox, dy = t.clientY-a.oy;
+    const len = Math.hypot(dx,dy), cl = Math.min(len, R);
+    const nx = len ? dx/len : 0, ny = len ? dy/len : 0;
+    a.knob.style.transform = `translate(calc(-50% + ${nx*cl}px), calc(-50% + ${ny*cl}px))`;
+    const vx = nx*cl/R, vy = ny*cl/R;     // -1..1 ; vy>0 = doigt vers le bas
+    if (a.zone==='L'){ Input.move.x = vx; Input.move.y = vy; }   // haut = avancer
+    else            { Input.lookAxis.x = vx; Input.lookAxis.y = vy; } // regard (Y inversé voulu)
+  }
+  function endTouch(t){
+    const a = active[t.identifier]; if (!a) return;
+    (a.zone==='L'?djL:djR).style.display = 'none';
+    if (a.zone==='L'){ Input.move.x = 0; Input.move.y = 0; }
+    else            { Input.lookAxis.x = 0; Input.lookAxis.y = 0; }
+    delete active[t.identifier];
+  }
+  layer.addEventListener('touchstart', (e)=>{ for (const t of e.changedTouches) startTouch(t); }, {passive:false});
+  layer.addEventListener('touchmove',  (e)=>{ e.preventDefault(); for (const t of e.changedTouches) moveTouch(t); }, {passive:false});
+  layer.addEventListener('touchend',   (e)=>{ for (const t of e.changedTouches) endTouch(t); });
+  layer.addEventListener('touchcancel',(e)=>{ for (const t of e.changedTouches) endTouch(t); });
+
   holdBtn('btnUp',   v=> Input.up = v);            // monter (enclenche le vol)
   holdBtn('btnDown', v=> Input.descendHeld = v);   // descendre
   holdBtn('btnRun',  v=> Input.run = v);           // courir
@@ -858,27 +944,10 @@ function setupTouch(){
   jb.addEventListener('touchend', jbEnd, {passive:false});
   jb.addEventListener('touchcancel', jbEnd, {passive:false});
 }
-function makeJoystick(id, cb){
-  const base = document.getElementById(id), stick = base.querySelector('.stick');
-  let touchId = null; const R = 44;
-  const center = ()=>{ const r = base.getBoundingClientRect(); return {cx:r.left+r.width/2, cy:r.top+r.height/2}; };
-  const move = (cx,cy,tx,ty)=>{
-    let dx = tx-cx, dy = ty-cy; const dist = Math.hypot(dx,dy);
-    if (dist > R){ dx = dx/dist*R; dy = dy/dist*R; }
-    stick.style.transform = `translate(${dx}px,${dy}px)`;
-    cb(dx/R, -dy/R); // y: haut = positif
-  };
-  base.addEventListener('touchstart', (e)=>{ e.preventDefault(); const t = e.changedTouches[0]; touchId = t.identifier;
-    const {cx,cy} = center(); move(cx,cy,t.clientX,t.clientY); }, {passive:false});
-  base.addEventListener('touchmove', (e)=>{ e.preventDefault();
-    for (const t of e.changedTouches) if (t.identifier===touchId){ const {cx,cy}=center(); move(cx,cy,t.clientX,t.clientY); } }, {passive:false});
-  const end = (e)=>{ for (const t of e.changedTouches) if (t.identifier===touchId){ touchId=null; stick.style.transform='translate(0,0)'; cb(0,0); } };
-  base.addEventListener('touchend', end); base.addEventListener('touchcancel', end);
-}
 function holdBtn(id, cb){
   const b = document.getElementById(id);
-  const on = (e)=>{ e.preventDefault(); b.classList.add('held'); cb(true); };
-  const off = (e)=>{ e.preventDefault(); b.classList.remove('held'); cb(false); };
+  const on = (e)=>{ e.preventDefault(); e.stopPropagation(); b.classList.add('held'); cb(true); };
+  const off = (e)=>{ e.preventDefault(); e.stopPropagation(); b.classList.remove('held'); cb(false); };
   b.addEventListener('touchstart', on, {passive:false});
   b.addEventListener('touchend', off, {passive:false});
   b.addEventListener('touchcancel', off, {passive:false});
