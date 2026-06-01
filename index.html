@@ -321,26 +321,14 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-ra
       hand-tracking-controls="hand: left; modelColor: #cfe9ee"
       raycaster="objects: .clickable; far: 6; lineColor: #36d6e7; showLine: true"
       cursor="fuse: false; downEvents: triggerdown, pinchstarted; upEvents: triggerup, pinchended"
-      vr-hand="hand: left">
-      <a-entity class="glowstick" visible="false">
-        <a-cylinder class="gs-mesh" height="0.28" radius="0.013" rotation="-90 0 0" position="0 0 -0.16"
-          material="shader: flat; color: #39c5bb"></a-cylinder>
-        <a-light class="gs-light" type="point" color="#39c5bb" intensity="0.5" distance="2.5" position="0 0 -0.30"></a-light>
-      </a-entity>
-    </a-entity>
+      vr-hand="hand: left"></a-entity>
 
     <a-entity id="rightHand"
       oculus-touch-controls="hand: right"
       hand-tracking-controls="hand: right; modelColor: #ffd1e8"
       raycaster="objects: .clickable; far: 6; lineColor: #36d6e7; showLine: true"
       cursor="fuse: false; downEvents: triggerdown, pinchstarted; upEvents: triggerup, pinchended"
-      vr-hand="hand: right">
-      <a-entity class="glowstick" visible="false">
-        <a-cylinder class="gs-mesh" height="0.28" radius="0.013" rotation="-90 0 0" position="0 0 -0.16"
-          material="shader: flat; color: #39c5bb"></a-cylinder>
-        <a-light class="gs-light" type="point" color="#39c5bb" intensity="0.5" distance="2.5" position="0 0 -0.30"></a-light>
-      </a-entity>
-    </a-entity>
+      vr-hand="hand: right"></a-entity>
   </a-entity>
 </a-scene>
 
@@ -815,12 +803,35 @@ function applySky(){
   img.onerror = ()=> console.warn('Image 360 introuvable : ' + SKY_IMAGE + ' (fond noir conservé)');
   img.src = SKY_IMAGE;
 }
-/* Bâtons lumineux dans les mains (VR uniquement) : couleur + on/off */
+/* Bâtons lumineux dans les mains (VR) : objets THREE attachés DIRECTEMENT à l'objet 3D
+   de chaque manette -> ils suivent la main et le déplacement, et ne restent pas au centre. */
+function buildGlowSticks(){
+  ['leftHand','rightHand'].forEach(id=>{
+    const h = document.getElementById(id);
+    if (!h || !h.object3D || h._glow) return;
+    const grp = new THREE.Group();
+    const mat = new THREE.MeshBasicMaterial({ color: SETTINGS.glowColor }); // non éclairé = effet lumineux
+    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.28, 12), mat);
+    cyl.rotation.x = -Math.PI/2;     // l'axe du cylindre (Y) pointe vers l'avant (-Z)
+    cyl.position.set(0, 0, -0.16);
+    const light = new THREE.PointLight(SETTINGS.glowColor, 0.6, 2.5);
+    light.position.set(0, 0, -0.30);
+    grp.add(cyl); grp.add(light);
+    grp.visible = false;
+    h.object3D.add(grp);             // enfant direct de la manette -> suit la main
+    h._glow = { grp, mat, light };
+  });
+}
 function applyGlow(){
+  buildGlowSticks();
   const on = SETTINGS.glowSticks && sceneEl && sceneEl.is('vr-mode');
-  document.querySelectorAll('.glowstick').forEach(g=> g.setAttribute('visible', !!on));
-  document.querySelectorAll('.gs-mesh').forEach(m=> m.setAttribute('material', 'shader: flat; color: ' + SETTINGS.glowColor));
-  document.querySelectorAll('.gs-light').forEach(l=> l.setAttribute('light', 'type: point; color: ' + SETTINGS.glowColor + '; intensity: 0.6; distance: 2.5'));
+  ['leftHand','rightHand'].forEach(id=>{
+    const h = document.getElementById(id);
+    if (!h || !h._glow) return;
+    h._glow.grp.visible = !!on;
+    h._glow.mat.color.set(SETTINGS.glowColor);
+    h._glow.light.color.set(SETTINGS.glowColor);
+  });
 }
 
 /* ----- Helpers UI ----- */
